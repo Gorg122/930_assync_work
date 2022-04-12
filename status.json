@@ -1,0 +1,29 @@
+{
+    "pc_id_1": [
+        {
+            "status": "Not working",
+            "user": "None",
+            "start_time": "None",
+            "local_log":"C:\\some_gen",
+            "main_folder_path": "C\\spmll"
+        }
+    ],
+    "pc_id_2": [
+        {
+            "status": "Not working",
+            "user": "None",
+            "start_time": "None",
+            "local_log":"C:\\some_gen",
+            "main_folder_path": "C\\spmll"
+        }
+    ],
+    "pc_id_3": [
+        {
+            "status": "Not working",
+            "user": "None",
+            "start_time": "None",
+            "local_log":"C:\\some_gen",
+            "main_folder_path": "C\\spmll"
+        }
+    ]
+}
