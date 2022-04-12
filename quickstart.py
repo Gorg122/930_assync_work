@@ -92,22 +92,41 @@ def extended_exel_work(service_sheets):
 
 
 def exel_work(service_sheets):
-    ranges = ["A9:C9"] #в этом месте надо выбрать ечейку которые будем исспользовать.
-    spreadsheetId2 = '1hNTK6F98X5-lB1TIialANY9diKIXrQXRUQKMTVrKzB4'
+    ranges = ["A2:C2"] #в этом месте надо выбрать ечейку которые будем исспользовать.
+    spreadsheetId2 = "1hNTK6F98X5-lB1TIialANY9diKIXrQXRUQKMTVrKzB4"
     results = service_sheets.spreadsheets().values().batchGet(spreadsheetId = spreadsheetId2,
                                      ranges = ranges,
                                      valueRenderOption = 'UNFORMATTED_VALUE',
                                      dateTimeRenderOption = 'FORMATTED_STRING').execute()
 
-    sheet_values = results['valueRanges'][0]['values'][0][2]
-    value_id = sheet_values.split('=')[1]
 
-    email_name = results['valueRanges'][0]['values'][0][1]
+    try:
+        sheet_values = results['valueRanges'][0]['values'][0][2]
+        print(sheet_values)
+        value_id = sheet_values.split('=')[1]
+        email_name = results['valueRanges'][0]['values'][0][1]
+        print(sheet_values)
+        print(value_id)
 
-    print(sheet_values)
-    print(value_id)
-    return (value_id, email_name)
-
+        results_del = service_sheets.spreadsheets().batchUpdate(spreadsheetId=spreadsheetId2, body={
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": 1843988947,
+                            "dimension": "ROWS",
+                            "startIndex": 1,
+                            "endIndex": 2
+                        }
+                    }
+                }
+            ]
+        })
+        results_del.execute()
+        return (value_id, email_name)
+    except:
+        print("Значений нет")
+        
 def file_downloader(service, value_id, email_name):
     file_id = value_id
     request = service.files().get_media(fileId=file_id)
