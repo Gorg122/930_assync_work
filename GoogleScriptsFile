@@ -1,0 +1,23 @@
+function myFunction() {
+  ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.sort(1);
+  ss.getRange('D1').setValue("=COUNTBLANK(a2:a10)");
+  Logger.log(ss.getRange('D1').getValue());
+  if (ss.getRange('D1').getValue() > 8.0) {
+    for(var i = 10; i > 1; i--){
+      ss.deleteRow(i);
+      };
+  }
+}
+
+//Сортировка и удаление строк когда очередь пустеет, для обновления каретки
+
+function myFunction() {
+  FormApp.getActiveForm().deleteAllResponses();
+  SpreadsheetApp.getActiveSpreadsheet();
+}
+
+// Функция удаляющая все ответы из формы
+
+
+// Обе функции работабт по тригеру в Гугл Скриптс, один при отправке формы, второй при изменении в таблице. 
