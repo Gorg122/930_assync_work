@@ -69,11 +69,12 @@ def main():
 
     id, email = exel_work(service_sheets)
     file_downloader(service, id, email)
-
+    file_delliter(id, service)
     addr_to = "sasha.lorens@yandex.ru"  # Получатель
     files = [
         "C:/Users/sasha/PycharmProjects/pythonProject1/sah.lorens@gmail.com/filename.zip"]  # Список файлов, если вложений нет, то files=[]                                      # Если нужно отправить все файлы из заданной папки, нужно указать её
     send_email(addr_to, "Тема сообщения", "Текст сообщения", files)
+    
 
 def extended_exel_work(service_sheets):
     ranges = []
@@ -142,7 +143,11 @@ def file_downloader(service, value_id, email_name):
     zip_file = zipfile.ZipFile(''+email_name+'/filename.zip') #Разархивирование файла
     zip_file.extractall(email_name)
 
-
+def file_delliter(file_id, service):
+    try:
+        service.files().delete(fileId=file_id).execute()
+    except:
+        print('Ошибка: файла не существует')
 
 if __name__ == '__main__':
     main()
