@@ -1,28 +1,71 @@
-# This is a sample Python script.
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-###############################################################################################################
-# status = 1 - Готов к работе и ожидает
-# status = 2 - В базу данных занесен необходимый айди для скачки, начало процедуры, ожидание загрузки
-# status = 3 - Загрузка файлов началась и прошивка принята в работу
-# status = 4 - Загрузка завершена и начана работа, можно удалять запись, вписать начало работы
-# status = 5 - Прошивка отработана, файл отправляется
-# status = 6 - Ошибка работы стенда во время прошивки - сброс старой прошивки
-# status = 7 - Ошибка - не подключены платы, или ошибка работы компьютера
-# status = 8 - Компьютер недоступен, нет ответа.
-###########################                  БОЛЬШАЯ ПАМЯТКА                        ############################
+from __future__ import print_function
+import httplib2
+import os
+from apiclient import discovery
+from oauth2client import client
+from oauth2client import tools
+from oauth2client.file import Storage
 import pymysql.cursors
+import time
+# import zipfile
+# from New_all_2 import Launch
+# from emailsend import send_email
+# import smtplib
+# import mimetypes                                            # Импорт класса для обработки неизвестных MIME-типов, базирующихся на расширении файла
+# from email import encoders                                  # Импортируем энкодер
+# from email.mime.base import MIMEBase                        # Общий тип
+# from email.mime.text import MIMEText                        # Текст/HTML
+# from email.mime.image import MIMEImage                      # Изображения
+# from email.mime.audio import MIMEAudio                      # Аудио
+# from email.mime.multipart import MIMEMultipart              # Многокомпонентный объект
 import datetime
+# import shutil
+# import io
+# from googleapiclient.http import MediaIoBaseDownload
+
+email_name = "Not_email"
+
+try:
+    import argparse
+    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+except ImportError:
+    flags = None
+
+# If modifying these scopes, delete the file token.json.
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+CLIENT_SECRET_FILE = 'client_secret_2.json'
+APPLICATION_NAME = 'Drive API Python Quickstart'
+
+def main():
+    #################################### Должно быть в начале 1 раз #############
+    credentials = get_credentials()
+    http = credentials.authorize(httplib2.Http())
+    service = discovery.build('drive', 'v3', http=http)
+    service_sheets = discovery.build('sheets', 'v4', http=http)
+    return service_sheets
+    #################################### Должно быть в начале 1 раз #############
+
+def get_credentials():
+    home_dir = os.path.expanduser('~')
+    credential_dir = os.path.join(home_dir, '.credentials')
+    if not os.path.exists(credential_dir):
+        os.makedirs(credential_dir)
+    credential_path = os.path.join(credential_dir,
+                                   'drive-python-quickstart2.json')
+
+    store = Storage(credential_path)
+    credentials = store.get()
+    if not credentials or credentials.invalid:
+        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
+        flow.user_agent = APPLICATION_NAME
+        if flags:
+            credentials = tools.run_flow(flow, store, flags)
+        else: # Needed only for compatibility with Python 2.6
+            credentials = tools.run(flow, store)
+        print('Storing credentials to ' + credential_path)
+    return credentials
 
 
-# server = 'localhost'
-# database = 'labstandstatus'
-# username = 'root'
-# password = 'root'
-############################################################# Подключение к базе данных #############################
 def connect():
     con = pymysql.connect(host='localhost',
                           user='root',
@@ -30,123 +73,35 @@ def connect():
                           database='labstandstatus',
                           cursorclass=pymysql.cursors.DictCursor)
     return con
-############################################################ Создаем курсор для взаимодействия с базой данных ##############################
-# with con:
-#     cur = con.cursor()
-#     cur.execute("SELECT * FROM status")
-#     answer = cur.fetchall()
-#     print(answer)
-
 
 def status_check():  ############# Функция  проверки статуса и выставления ################
     con = connect()
     with con:
         cur = con.cursor()
-        cur.execute("SELECT id FROM status WHERE status = 3")
+        cur.execute("SELECT id FROM status WHERE status = 1")
         answer = cur.fetchall()
-        print(answer)
-        clear_for_work_stand = answer[0]['id']
-        print(clear_for_work_stand)
         try:
             clear_for_work_stand = answer[0]['id']
             print(clear_for_work_stand)
+            return clear_for_work_stand
         except:
             print("На данный момент свободных стендов нет")
-    return clear_for_work_stand
+            return 0
 
-
-def main_change_procedure(clear_for_work_stand, needed_status): #### Функция измененя статуса стенда
+def send_id_for_download(id_dwnld, email_name_sql, clear_for_work_stand ): ##### Функция меняющая id файла который необходимо скачать
     con = connect()
     with con:
         cur = con.cursor()
-        try:
-            sql = ("""UPDATE status
-                            SET status = %s
-                            WHERE id = %s""")
-            cur.execute(sql, (needed_status, clear_for_work_stand))
-            con.commit()
-            print("Все нормально")
-        except:
-            print("Не сработало")
-
-
-def send_id_for_download(clear_for_work_stand, id_dwnld): ##### Функция меняющая id файла который необходимо скачать
-    con = connect()
-    with con:
-        cur = con.cursor()
-        try:
-            sql = ("""UPDATE status
-                                        SET file_id = %s
+        # try:
+        sql = ("""UPDATE status
+                                        SET file_id = %s, emai_name = %s
                                         WHERE id = %s""")
-            cur.execute(sql, (id_dwnld, clear_for_work_stand))
-            con.commit()
-            print("Все нормально")
-        except:
-            print("Не сработало")
-
-def write_current_time(id): ##### Функция записи начала работы прошивки.
-    con = connect()
-    with con:
-        cur = con.cursor()
-        dt_now = datetime.datetime.now()
-        try:
-            sql = ("""UPDATE status
-                                           SET start_time = %s
-                                           WHERE id = %s""")
-            cur.execute(sql, (dt_now, id))
-            con.commit()
-            print("Все нормально")
-        except:
-            print("Не сработало")
-
-def redy_to_del(id): ### Функция проверки файлов которые можно удалить\ удаление строки
-    con = connect()
-    with con:
-        cur = con.cursor()
-        dt_now = datetime.datetime.now()
-        try:
-            sql = ("""UPDATE status
-                                               SET ready_to_del = %s
-                                               WHERE id = %s""")
-            cur.execute(sql, (1, id))
-            con.commit()
-            print("Все нормально")
-        except:
-            print("Не сработало")
-
-def del_from_sql(id): ### Функция удаление строки в которой храниться id для загрузки.
-    con = connect()
-    with con:
-        cur = con.cursor()
-        dt_now = datetime.datetime.now()
-        try:
-            sql = ("""UPDATE status
-                                                   SET ready_to_del = %s, file_id = 0
-                                                   WHERE id = %s""")
-            cur.execute(sql, (0, id))
-            con.commit()
-            print("Все нормально")
-        except:
-            print("Не сработало")
-
-def check_stat_for_downloading(my_id):
-    con = connect()
-    with con:
-        cur = con.cursor()
-        sql = ("SELECT id, status, file_id FROM status WHERE id = %s")
-        cur.execute(sql,  (my_id))
-        answer = cur.fetchall()
-        query_for_my_stand = answer[0]['status']
-        print(query_for_my_stand)
-        if query_for_my_stand == 2:
-            # con = connect()
-            print(my_id)
-            id_for_download = answer[0]['file_id']
-            print(id_for_download)
-            print(change_status(my_id, 3))
-        else:
-            print('nothing')
-    return id_for_download
+        cur.execute(sql, (id_dwnld, email_name_sql,clear_for_work_stand))
+        con.commit()
+        change_status(clear_for_work_stand, 2)
+        print("Все нормально")
+        # except:
+        # print("Какой то кал")
 
 def change_status(my_id, status_change):
     con = connect()
@@ -162,12 +117,75 @@ def change_status(my_id, status_change):
     return ('OK')
 
 
+def exel_work(service_sheets):
+    ranges = ["A2:C2"] #в этом месте надо выбрать ечейку которые будем исспользовать.
+    spreadsheetId2 = "1hNTK6F98X5-lB1TIialANY9diKIXrQXRUQKMTVrKzB4"
+    results = service_sheets.spreadsheets().values().batchGet(spreadsheetId = spreadsheetId2,
+                                     ranges = ranges,
+                                     valueRenderOption = 'UNFORMATTED_VALUE',
+                                     dateTimeRenderOption = 'FORMATTED_STRING').execute()
+    try:
+        sheet_values = results['valueRanges'][0]['values'][0][2]
+        value_id = sheet_values.split('=')[1]
+        email_name = results['valueRanges'][0]['values'][0][1]
+        print(value_id)
+        return (value_id, email_name)
+    except:
+        print("Значений нет")
+        return (0, 0)
+
+def exel_del(service_sheets):
+    ranges = ["A2:C2"]  # в этом месте надо выбрать ечейку которые будем исспользовать.
+    spreadsheetId2 = "1hNTK6F98X5-lB1TIialANY9diKIXrQXRUQKMTVrKzB4"
+    results = service_sheets.spreadsheets().values().batchGet(spreadsheetId=spreadsheetId2,
+                                                              ranges=ranges,
+                                                              valueRenderOption='UNFORMATTED_VALUE',
+                                                              dateTimeRenderOption='FORMATTED_STRING').execute()
+
+    try:
+        results_del = service_sheets.spreadsheets().batchUpdate(spreadsheetId=spreadsheetId2, body={
+            "requests": [
+                {
+                    "deleteDimension": {
+                        "range": {
+                            "sheetId": 1843988947,
+                            "dimension": "ROWS",
+                            "startIndex": 1,
+                            "endIndex": 2
+                        }
+                    }
+                }
+            ]
+        })
+        results_del.execute()
+    except:
+        print("Значений нет")
+        return (0, 0)
+
+
+def infinet_check(service_sheets, file_id, email):
+    pc_id = status_check()
+    print(pc_id)
+    if pc_id != 0:
+        send_id_for_download(file_id, email, pc_id)
+        print("запись успешно записана")
+        exel_del(service_sheets)
+        return 1
+    time.sleep(20)
+
+def sub_main(service_sheets):
+    id, email = exel_work(service_sheets)
+    if (id != 0) and (email != 0):
+        some_flag = 0
+        while some_flag == 0:
+            some_flag = infinet_check(service_sheets, id, email)
+            print("Нет свободных компов") ##### Здесь должен быть цикл на проверку новых компов
+    else:
+        print("Нет записей")
+        time.sleep(20)
+    sub_main(service_sheets)
+
+
 if __name__ == '__main__':
-    needed_status = 3
-    id_dwnld = "gvndgdknvo"
-    # clear_for_work_stand = status_check()
-    # main_change_procedure(clear_for_work_stand, needed_status)
-    # send_id_for_download(clear_for_work_stand, id_dwnld)
-    # write_current_time(clear_for_work_stand)
-    # change_status()
-    check_stat_for_downloading(2)
+    sheets = main()
+    sub_main(sheets)
