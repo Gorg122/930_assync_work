@@ -54,36 +54,39 @@ def file_download(my_id, filename):
         except:
             print("Какой то кал")
 
-addr = "sasha.lorens@yandex.ru"  # Отправитель
-password = "LeNoVo_13572468"
 
-mail = imaplib.IMAP4_SSL('imap.yandex.ru')
-mail.login(addr, password)
-mail.list()
-mail.select("inbox")
-mail.select(readonly=False)
-term = u"Ваша прошивка".encode("utf-8")        ######
-mail.literal = term                            ######
-result, data = mail.search("utf-8", "SUBJECT") ###### ЭТО РАБОТАЕТ!!!!!!!!!!!!!!!!!!!!!!!
-# result, data = mail.search(None, "ALL")
-# result, data = mail.search("iso8859-5", "(SUBJECT %s)" % u"Ваша прошивка".encode("iso8859-5"))
-# result, data = mail
-ids = data[0]
-id_list = ids.split()
+def mail_reg():
+    addr = "sasha.lorens@yandex.ru"  # Отправитель
+    password = "LeNoVo_13572468"
+    mail = imaplib.IMAP4_SSL('imap.yandex.ru')
+    mail.login(addr, password)
+    return mail
 
-latest_email_id = id_list[-1]
+def find_new_mail(mail):
+    mail.list()
+    mail.select("inbox")
+    mail.select(readonly=False)
+    term = u"Ваша прошивка".encode("utf-8")  ######
+    mail.literal = term  ######
+    result, data = mail.search("utf-8", "SUBJECT")  ###### ЭТО РАБОТАЕТ!!!!!!!!!!!!!!!!!!!!!!!
+    ids = data[0]
+    id_list = ids.split()
+    latest_email_id = id_list[-1]
+    result, data = mail.fetch(latest_email_id, "(RFC822)")
+    raw_email = data[0][1]
+    raw_email_string = raw_email.decode('utf-8')
+    email_message = email.message_from_string(raw_email_string)
+    email.utils.parseaddr(email_message['From']) ### от кого имейл, влияет на запись в базу данных
+    file_mail_download(email_message)
+    mail.store(latest_email_id, '+FLAGS', r'\\DELETED')
+    mail.expunge()
 
-result, data = mail.fetch(latest_email_id, "(RFC822)")
-raw_email = data[0][1]
-
-raw_email_string = raw_email.decode('utf-8')
-email_message = email.message_from_string(raw_email_string)
 
 
-def file_mail_download(msg):
+def file_mail_download(email_message):
     download_folder = r'C:\Users\sasha\PycharmProjects'
     print(' ')
-    for part in msg.walk():
+    for part in email_message.walk():
         if part.get_content_maintype() == 'multipart':
             continue
         if part.get('Content-Disposition') is None:
@@ -97,15 +100,10 @@ def file_mail_download(msg):
             fp.write(part.get_payload(decode=True))
             fp.close()
 
-
-download_folder = 'None'
-
-
-
-
-print(email_message['To'])
-print(email.utils.parseaddr(email_message['From']))
-file_mail_download(email_message)
+# 
+# download_folder = 'None'
+# print(email.utils.parseaddr(email_message['From']))
+# file_mail_download(email_message)
 # print(email_message['Date'])    #################  Это не нужно в отличае от верхнего, так как нам по сути надо узнать почту и скачать вложение, а потом удалить письмо
 # print(email_message['Subject']) #################
 # print(email_message['Message-Id'])###############
