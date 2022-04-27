@@ -3,29 +3,54 @@ import warnings
 import time
 import serial.tools.list_ports
 import subprocess
+import configparser
 
 
 
 
 def Find_Arduino():
-    # Раздел статичных переменных
+    # Раздел основных переменных
 
+    config = configparser.ConfigParser()
+    # with open('Config.ini', 'r') as configfile:
+    #     config.read(configfile)
+    config.read("Config.ini")
     # Путь до программатора Arduino
-    Arduino_path_1 = "C:/Program Files (x86)/Arduino/hardware/tools/avr/bin/avrdude"
+
+    Arduino_path_1 = config['Arduino']['Arduino_path_1']
+
     # Путь до конфигуратора программатора Arduino
-    Arduino_path_2 = "C:/Program Files (x86)/Arduino/hardware/tools/avr/etc/avrdude.conf"
+
+    Arduino_path_2 = config['Arduino']['Arduino_path_2']
+
     # Путь до hex файла прошивки
-    Arduino_hex_path = "C:/PROJECT_930/Prototype_new_2/old.ino.hex"
+
+    Arduino_hex_path = config['Arduino']['Arduino_hex_path']
+
     # Ключ успешного ответа Serial порта
-    start = ["ardok"]
+
+    start = config['Arduino']['Arduino_key']
+
     # Ключ ошибки
     Error = "Arduino_problem"
 
-    # Марка Ардуино
-    # Для Arduino Nano CH340
-    Arduino_name = "CH340"
-    # Для Arduino UNO
-    # Arduino_name = "Arduino"
+    Arduino_name = config['Arduino']['Arduino_name']
+    # # Путь до программатора Arduino
+    # Arduino_path_1 = "C:/Program Files (x86)/Arduino/hardware/tools/avr/bin/avrdude"
+    # # Путь до конфигуратора программатора Arduino
+    # Arduino_path_2 = "C:/Program Files (x86)/Arduino/hardware/tools/avr/etc/avrdude.conf"
+    # # Путь до hex файла прошивки
+    # Arduino_hex_path = "C:/intelFPGA_lite/Project/NEW_PROTOTYPE_2/old.ino.hex"
+    # # Ключ успешного ответа Serial порта
+    # start = ["ardok"]
+    # # Ключ ошибки
+    # Error = "Arduino_problem"
+    #
+    # # Марка Ардуино
+    # # Для Arduino Nano CH340
+    # Arduino_name = "CH340"
+    # # Для Arduino UNO
+    # # Arduino_name = "Arduino"
 
     int1 = 0
     Arduino_port = ""
@@ -77,7 +102,7 @@ def Find_Arduino():
         while y != 1:  # Выставляем повтроение подключений до успешного
             poslanie = "Hello"
             #print("prohodka")
-            ser.write(bytearray(poslanie, 'utf-8')) # Отправляем через Serial порт ключевое слово
+            ser.write(bytes(poslanie, 'utf-8')) # Отправляем через Serial порт ключевое слово
             data = str(ser.readline().decode().strip('\r\n')) # Принимаем с  Serial порта данные
             y += 1
 
@@ -120,4 +145,3 @@ def Find_Arduino():
     else:
         return(Error)
 #print(Find_Arduino())
-
