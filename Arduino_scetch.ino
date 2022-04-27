@@ -9,7 +9,6 @@ int pin7 = 10;
 int pin8 = 11;
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
   pinMode(pin1, OUTPUT);
   pinMode(pin2, OUTPUT);
