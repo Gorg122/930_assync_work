@@ -79,7 +79,7 @@ def file_upload(my_id, filename, email):
             con.commit()
             print("Все нормально")
         except:
-            print("Какой то кал")
+            print("Не все нормально")
 
 
 # def file_download(my_id, filename):
