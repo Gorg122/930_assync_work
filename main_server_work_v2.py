@@ -7,6 +7,9 @@ from oauth2client import tools
 from oauth2client.file import Storage
 import pymysql.cursors
 import time
+import email
+import imaplib
+
 # import zipfile
 # from New_all_2 import Launch
 # from emailsend import send_email
@@ -38,12 +41,63 @@ APPLICATION_NAME = 'Drive API Python Quickstart'
 
 def main():
     #################################### Должно быть в начале 1 раз #############
-    credentials = get_credentials()
+    credentials = get_credentials()                                 ########  работа с exel таблицей
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('drive', 'v3', http=http)
     service_sheets = discovery.build('sheets', 'v4', http=http)
+    #############################################################################
+    # addr = "sasha.lorens@yandex.ru"  # Отправитель \\\\\\\\\\\\\\ Работа с почтой
+    # password = "LeNoVo_13572468"
+    # mail = imaplib.IMAP4_SSL('imap.yandex.ru')
+    # mail.login(addr, password)
+
     return service_sheets
     #################################### Должно быть в начале 1 раз #############
+
+def read_file(filename):
+    with open(filename, 'rb') as f:
+        data_zip = f.read()
+    return data_zip
+
+
+def write_file(data, filename):
+    with open(filename, 'wb') as f:
+        f.write(data)
+    return 'OK'
+
+
+def file_upload(my_id, filename, email):
+    con = connect()
+    data = read_file(filename)
+    with con:
+        cur = con.cursor()
+        try:
+            sql = ("""UPDATE status
+                      SET soc_zip = %s, email_name = %s, file_id = 0
+                      WHERE id = %s""")
+            cur.execute(sql, (data, email, my_id))
+            con.commit()
+            print("Все нормально")
+        except:
+            print("Какой то кал")
+
+
+# def file_download(my_id, filename):
+#     con = connect()
+#     with con:
+#         cur = con.cursor()
+#         try:
+#             sql = ("""SELECT soc_zip
+#                       FROM status
+#                       WHERE id = %s""")
+#             cur.execute(sql, (my_id))
+#             data = cur.fetchone()[0]
+#             # con.commit()
+#             write_file(data, filename)
+#             print("Все нормально")
+#         except:
+#             print("Какой то кал")
+
 
 def get_credentials():
     home_dir = os.path.expanduser('~')
@@ -94,7 +148,7 @@ def send_id_for_download(id_dwnld, email_name_sql, clear_for_work_stand ): #####
         cur = con.cursor()
         # try:
         sql = ("""UPDATE status
-                                        SET file_id = %s, emai_name = %s
+                                        SET file_id = %s, email_name = %s
                                         WHERE id = %s""")
         cur.execute(sql, (id_dwnld, email_name_sql,clear_for_work_stand))
         con.commit()
@@ -163,6 +217,68 @@ def exel_del(service_sheets):
         return (0, 0)
 
 
+def file_mail_download(mail):
+    download_folder = r'C:\Users\grish\PycharmProjects\For_Sasha\Prototype_new_2\Prototype_new_2\download_for_bd'
+    for part in mail.walk():
+        if part.get_content_maintype() == 'multipart':
+            continue
+        if part.get('Content-Disposition') is None:
+            continue
+        # filename = part.get_filename()
+        filename = 'file.zip'
+        att_path = os.path.join(download_folder, filename)
+        if not os.path.isfile(att_path):
+            fp = open(att_path, 'wb')
+            fp.write(part.get_payload(decode=True))
+            fp.close()
+
+
+
+def mail_find():
+    addr = "sasha.lorens@yandex.ru"  # Отправитель \\\\\\\\\\\\\\ Работа с почтой
+    password = "LeNoVo_13572468"
+    mail = imaplib.IMAP4_SSL('imap.yandex.ru')
+    mail.login(addr, password)
+    try:
+        mail.list()
+        mail.select("inbox")
+        mail.select(readonly=False)
+        term = u"CAD_MIEM_SOC".encode("utf-8")  ######
+        mail.literal = term  ######
+        result, data = mail.search("utf-8", "SUBJECT")  ###### ЭТО РАБОТАЕТ!!!!!!!!!!!!!!!!!!!!!!!
+        print(result)
+        if result == 'OK':
+            ids = data[0]
+            print(data)
+            id_list = ids.split()
+            print(id_list)
+            latest_email_id = id_list[-1]
+            result, data = mail.fetch(latest_email_id, "(RFC822)")
+            raw_email = data[0][1]
+            raw_email_string = raw_email.decode('utf-8')
+            email_message = email.message_from_string(raw_email_string)
+            email_from_addr = email.utils.parseaddr(email_message['From'])[1]
+            file_mail_download(email_message)
+            pc_id = status_check()
+            print(pc_id)
+            filename = r'C:\Users\grish\PycharmProjects\For_Sasha\Prototype_new_2\Prototype_new_2\download_for_bd\file.zip'
+            print('u8g8ugi8hhuih')
+            if pc_id != 0:
+                file_upload(pc_id, filename, email_from_addr)
+                change_status(pc_id, 2)
+                print('прошла загрузка////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////')
+                if os.path.isfile(filename):
+                    os.remove(filename)
+                    print('delited')
+                mail.store(latest_email_id, '+FLAGS', '\\DELETED')
+                print(latest_email_id)
+                mail.expunge()
+                return 1
+    except:
+        print('Нет писем')
+        return 0
+
+
 def infinet_check(service_sheets, file_id, email):
     pc_id = status_check()
     print(pc_id)
@@ -174,16 +290,17 @@ def infinet_check(service_sheets, file_id, email):
     time.sleep(20)
 
 def sub_main(service_sheets):
-    id, email = exel_work(service_sheets)
-    if (id != 0) and (email != 0):
-        some_flag = 0
-        while some_flag == 0:
-            some_flag = infinet_check(service_sheets, id, email)
-            print("Нет свободных компов") ##### Здесь должен быть цикл на проверку новых компов
-    else:
-        print("Нет записей")
-        time.sleep(20)
-    sub_main(service_sheets)
+    while True:
+        id, email = exel_work(service_sheets)
+        mail_find() # поиск и загрузка в базу прошивок
+        if (id != 0) and (email != 0):
+            some_flag = 0
+            while some_flag == 0:
+                some_flag = infinet_check(service_sheets, id, email)
+                print("Нет свободных компов") ##### Здесь должен быть цикл на проверку новых компов
+        else:
+            print("Нет записей")
+            time.sleep(20)
 
 
 if __name__ == '__main__':
