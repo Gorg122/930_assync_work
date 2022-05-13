@@ -1,0 +1,194 @@
+ ///////////////  Первый вариант с нормальной отправкой
+ 
+ html = """\
+    <table border="0" cellpadding="0" cellspacing="0" style="margin:0; padding:0" width="100%">
+    <tr>
+      <td align="center">
+        <center style="max-width: 600px; width: 100%;">
+         <!--[if gte mso 9]>
+  <table border="0" cellpadding="0" cellspacing="0" style="margin:0; padding:0"><tr><td>
+  <![endif]-->
+  <table border="0" cellpadding="0" cellspacing="0" style="margin:0px; padding:0px; text-align:center " width="100%"  bgcolor="#0044B0">
+    <tr>
+      <td>
+          <!--[if gte mso 9]>
+          <table border="0" cellpadding="0" cellspacing="0">
+          <tr><td align="center">
+                 <table border="0" cellpadding="0" cellspacing="0" width="300"     align="center"><tr><td>
+          <![endif]-->
+  
+          <!-- Блок номер 1 -->
+           <span style="display:inline-block; text-align: center; style="margin:10px 10px; padding:0px">
+            <table border="0" cellpadding="0" cellspacing="0" style="margin:0px; padding:20px 10px 20px 10px" width="100%" bgcolor="#ffffff">
+                <td>
+                <img src="https://miem.hse.ru/mirror/pubs/share/direct/432333897.png" alt="" border="0" width="100%" height="150" style="display:block; padding: 0px; margin: auto"/>
+            </table>
+           </span>
+          <!-- Блок номер 1 -->
+   <!--[if gte mso 9]>
+   </td></tr></table>
+   </td>
+   <td align="center">
+   <table border="0" cellpadding="0" cellspacing="0" align="center"><tr><td>
+   <![endif]-->
+          <!-- Блок номер 2 -->
+           <span style="display:inline-block; width:300px; text-align: center; font-family: 'arial' , sans-serif , 'helvetica' , sans-serif; font-size: 24px;  margin:30px 0px 0px 0px; padding:0; color: #ffffff;">
+                Ваша прошивка
+           </span>
+          <!-- Блок номер 2 -->
+
+           <!-- Блок номер 2 -->
+           <span style="display:inline-block; width:300px; display:inline-block; width:300px; text-align: center; font-family: 'arial' , sans-serif , 'helvetica' , sans-serif; font-size: 24px; margin:30px 0px 30px 0px; padding:0; color: white;">
+            Скачать
+            </span>
+            <!-- Блок номер 2 -->
+
+          <!--[if gte mso 9]>
+          </td></tr></table>
+          </td>
+          </tr></table>
+          <![endif]-->
+              </td>
+          </tr>
+        </table>
+      <!--[if gte mso 9]>
+  </td></tr></table>
+  <![endif]-->
+       </center>   
+      </td>
+    </tr>
+  </table>
+    """
+
+
+
+
+
+////// Второй вариант с ошибкой
+
+ html = """\
+    <table border="0" cellpadding="0" cellspacing="0" style="margin:0; padding:0" width="100%">
+    <tr>
+      <td align="center">
+        <center style="max-width: 600px; width: 100%;">
+         <!--[if gte mso 9]>
+  <table border="0" cellpadding="0" cellspacing="0" style="margin:0; padding:0"><tr><td>
+  <![endif]-->
+  <table border="0" cellpadding="0" cellspacing="0" style="margin:0px; padding:0px; text-align:center " width="100%"  bgcolor="#0044B0">
+    <tr>
+      <td>
+          <!--[if gte mso 9]>
+          <table border="0" cellpadding="0" cellspacing="0">
+          <tr><td align="center">
+                 <table border="0" cellpadding="0" cellspacing="0" width="300"     align="center"><tr><td>
+          <![endif]-->
+  
+          <!-- Блок номер 1 -->
+           <span style="display:inline-block; text-align: center; style="margin:10px 10px; padding:0px">
+            <table border="0" cellpadding="0" cellspacing="0" style="margin:0px; padding:20px 10px 20px 10px" width="100%" bgcolor="#ffffff">
+                <td>
+                <img src="https://miem.hse.ru/mirror/pubs/share/direct/432333897.png" alt="" border="0" width="100%" height="150" style="display:block; padding: 0px; margin: auto"/>
+            </table>
+           </span>
+          <!-- Блок номер 1 -->
+   <!--[if gte mso 9]>
+   </td></tr></table>
+   </td>
+   <td align="center">
+   <table border="0" cellpadding="0" cellspacing="0" align="center"><tr><td>
+   <![endif]-->
+          <!-- Блок номер 2 -->
+           <span style="display:inline-block; width:300px; text-align: center; font-family: 'arial' , sans-serif , 'helvetica' , sans-serif; font-size: 24px;  margin:30px 0px 0px 0px; padding:0; color: #ffffff;">
+                Ваша прошивка
+           </span>
+          <!-- Блок номер 2 -->
+
+           <!-- Блок номер 2 -->
+           <span style="display:inline-block; width:300px; display:inline-block; width:300px; text-align: center; font-family: 'arial' , sans-serif , 'helvetica' , sans-serif; font-size: 24px; margin:30px 0px 30px 0px; padding:0; color: white;">
+            Скачать
+            </span>
+            <!-- Блок номер 2 -->
+
+          <!--[if gte mso 9]>
+          </td></tr></table>
+          </td>
+          </tr></table>
+          <![endif]-->
+              </td>
+          </tr>
+        </table>
+      <!--[if gte mso 9]>
+  </td></tr></table>
+  <![endif]-->
+       </center>   
+      </td>
+    </tr>
+  </table>
+    """
+
+
+/////////////////// Третий вариант с уведомлением
+ html = """\
+    <table border="0" cellpadding="0" cellspacing="0" style="margin:0; padding:0" width="100%">
+    <tr>
+      <td align="center">
+        <center style="max-width: 600px; width: 100%;">
+         <!--[if gte mso 9]>
+  <table border="0" cellpadding="0" cellspacing="0" style="margin:0; padding:0"><tr><td>
+  <![endif]-->
+  <table border="0" cellpadding="0" cellspacing="0" style="margin:0px; padding:0px; text-align:center " width="100%"  bgcolor="#0044B0">
+    <tr>
+      <td>
+          <!--[if gte mso 9]>
+          <table border="0" cellpadding="0" cellspacing="0">
+          <tr><td align="center">
+                 <table border="0" cellpadding="0" cellspacing="0" width="300"     align="center"><tr><td>
+          <![endif]-->
+  
+          <!-- Блок номер 1 -->
+           <span style="display:inline-block; text-align: center; style="margin:10px 10px; padding:0px">
+            <table border="0" cellpadding="0" cellspacing="0" style="margin:0px; padding:20px 10px 20px 10px" width="100%" bgcolor="#ffffff">
+                <td>
+                <img src="https://miem.hse.ru/mirror/pubs/share/direct/432333897.png" alt="" border="0" width="100%" height="150" style="display:block; padding: 0px; margin: auto"/>
+            </table>
+           </span>
+          <!-- Блок номер 1 -->
+   <!--[if gte mso 9]>
+   </td></tr></table>
+   </td>
+   <td align="center">
+   <table border="0" cellpadding="0" cellspacing="0" align="center"><tr><td>
+   <![endif]-->
+          <!-- Блок номер 2 -->
+           <span style="display:inline-block; width:300px; text-align: center; font-family: 'arial' , sans-serif , 'helvetica' , sans-serif; font-size: 24px;  margin:30px 0px 0px 0px; padding:0; color: #ffffff;">
+                Ваша прошивка
+           </span>
+          <!-- Блок номер 2 -->
+
+           <!-- Блок номер 2 -->
+           <span style="display:inline-block; width:300px; display:inline-block; width:300px; text-align: center; font-family: 'arial' , sans-serif , 'helvetica' , sans-serif; font-size: 24px; margin:30px 0px 30px 0px; padding:0; color: white;">
+            Скачать
+            </span>
+            <!-- Блок номер 2 -->
+
+          <!--[if gte mso 9]>
+          </td></tr></table>
+          </td>
+          </tr></table>
+          <![endif]-->
+              </td>
+          </tr>
+        </table>
+      <!--[if gte mso 9]>
+  </td></tr></table>
+  <![endif]-->
+       </center>   
+      </td>
+    </tr>
+  </table>
+    """
+
+
+
+
+
