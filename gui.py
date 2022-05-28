@@ -1,33 +1,69 @@
+import queue
 import tkinter as tk
 from tkinter import *
 from tkinter import scrolledtext
 from tkinter import Tk, Frame, Menu
+from threading import *
+import threading
+import subprocess
+import time
 from tkinter import messagebox
 from tkinter.ttk import Progressbar
+import queue
 
+import quickstart
+from quickstart import *
+import Boards_search
+# from Boards_search import *
 
+global flag_stop
+global thread
+global flag_new
+flag_new = True
+thread = Thread(target=quickstart.CAD_LOOP, daemon=True)
+
+# global thread2
+# thread2 = Thread(target=Boards_search.Board_search, daemon=True)
 
 ############################  Стандартные размеры ################################
 common_button_height = 2
 ###########################  Функции  ################################
-class TextWrapper:
-    text_field: tk.Text
+def TextWrapper(text, win_num):
+    if win_num:
+        log_work_fpga.configure(state='normal')
+        text_field = log_work_fpga
+        text_field.insert(tk.END, text)
+        text_field.update()
+        log_work_fpga.configure(state='disabled')
+    else:
+        log_find_fpga.configure(state='normal')
+        text_field = log_find_fpga
+        text_field.insert(tk.END, text)
+        text_field.update()
+        log_find_fpga.configure(state='disabled')
 
-    def __init__(self, text_field: tk.Text):
-        self.text_field = text_field
+def print_log(string, string_add=""):
+    string = string + (str(string_add))
+    TextWrapper(string+"\n", 1)
+    string_new = " "
 
-    def write(self, text: str):
-        self.text_field.insert(tk.END, text)
-
-    def flush(self):
-        self.text_field.update()
-
+def print_f_log(string, string_add=""):
+    string = string + (str(string_add))
+    TextWrapper(string+"\n", 0)
+    string_new = " "
 
 def clicked_find():  ## Функция запускающая скрипт поиска плат и выводящая результаты в лог
-    print("soneon")
+    # global thread2
+    log_find_fpga.configure(state='normal')
+    print_f_log("Начало поиска")
+    thread2 = Thread(target=Boards_search.Board_search, daemon=True)
+    thread2.start()
+    log_work_fpga.configure(state='disabled')
 
 def del_log():
+    log_find_fpga.configure(state='normal')
     log_find_fpga.delete(1.0, END)
+    log_work_fpga.configure(state='disabled')
 
 def change_frame():
     f_top_log.pack()
@@ -38,10 +74,71 @@ def change_frame_back():
     f_bottom_log.pack()
 
 def start_work():
-    print("some", file=TextWrapper(log_work_fpga))
+    global flag_stop
+    global thread
+    flag_stop = False
+    log_work_fpga.configure(state='normal')
+    print_log("1111111111")
+    print(thread.is_alive())
+    if not thread.is_alive():
+        thread.start()
+    log_work_fpga.configure(state='disabled')
+
+def check_thread(window, thread):
+    if thread.is_alive():
+        window.after(100, lambda: window.check_thread(thread))
+    else:
+        window.start_work_button.config(state=tk.NORMAL)
 
 def pause_work():
-    print("pause", file=TextWrapper(log_work_fpga))
+    global flag_stop
+    log_work_fpga.configure(state='normal')
+    print_log("Поставили на паузу")
+    flag_stop = True
+    log_work_fpga.configure(state='disabled')
+
+
+def change_status_log(type):
+    if type == "STRW":
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд готов к работе", fill="green")
+    elif (type == "STNP"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Требуется поиск плат", fill="yellow")
+    elif (type == "STP"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд на паузе", fill="yellow")
+    elif (type == "STW"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенл работает...", fill="green")
+    elif (type == "SNW"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Ошибка", fill="red")
+
+def change_status_find(type):
+    if type == "STRW":
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд готов к работе", fill="green")
+    elif (type == "STNP"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Требуется поиск плат", fill="yellow")
+    elif (type == "STP"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд на паузе", fill="yellow")
+    elif (type == "STW"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенл работает...", fill="green")
+    elif (type == "SNW"):
+        cc.delete("all")
+        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Ошибка", fill="red")
+
+
+def on_closing():
+    try:
+        if messagebox.askokcancel("Quit", "Do you want to quit?"):
+            window.destroy()
+    except:
+        print()
 ###############################################################
 
 window = Tk()
@@ -58,8 +155,9 @@ f_rigth_top_log = LabelFrame(f_top_log, text="право")
 text_result = LabelFrame(f_top_log, text="Низ")
 
 f_left_top_log.pack()
-f_rigth_top_log.pack()
 text_result.pack()
+f_rigth_top_log.pack()
+
 
 
 
@@ -85,7 +183,7 @@ mainmenu.add_command(label='Работа лабораторного стенда
 lbl = Label(f_left_top_log, text="Поиск всевозможных \n подключенных плат", font=("Arial Bold", 14), width=100)
 lbl.pack(side=TOP,  fill=X)
 
-settings_button = Button(f_left_top_log, text="Начать поиск", width=30, height=common_button_height)
+settings_button = Button(f_left_top_log, text="Начать поиск", width=30, command=clicked_find, height=common_button_height)
 settings_button.pack(side=BOTTOM)
 
 clearlog_button = Button(f_rigth_top_log, text="Очистить лог", command=del_log, width=30, height=common_button_height)
@@ -102,8 +200,8 @@ stop_work_button = Button(f_top_bottom_log, text="Стоп", width=30, command=p
 stop_work_button.pack(side=RIGHT)
 
 
-c = Canvas(f_top_annonse, height=30, bg='white')
-c.pack(fill=Y)
+cc = Canvas(f_top_annonse, height=30, bg='white')
+cc.pack(fill=Y)
 
 
 
@@ -112,9 +210,11 @@ c.pack(fill=Y)
 ###########################   Добавление эллементов для вывода консоли   ##################################
 
 log_find_fpga = scrolledtext.ScrolledText(f_rigth_top_log, height=25)
+log_find_fpga.configure(state='disabled')
 log_find_fpga.pack(side=TOP, fill=X)
 
 log_work_fpga = scrolledtext.ScrolledText(f_bottom_bottom_log, height=25)
+log_work_fpga.configure(state='disabled')
 log_work_fpga.pack(side=TOP, fill=X)
 ######################################################################
 ######################### Окна ошибок  ############################
@@ -123,5 +223,11 @@ log_work_fpga.pack(side=TOP, fill=X)
 # messagebox.showerror('Заголовок', 'Текст')  # показывает сообщение об ошибке
 
 ##################################################################
+def main_start_gui():
+    try:
+        window.protocol("WM_DELETE_WINDOW", on_closing)
+    except:
+        print("ff")
+    window.mainloop()
 
-window.mainloop()
+main_start_gui()
