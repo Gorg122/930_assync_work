@@ -1,78 +1,149 @@
-import smtplib
-import mimetypes                                            # Импорт класса для обработки неизвестных MIME-типов, базирующихся на расширении файла
-from email import encoders                                  # Импортируем энкодер
-from email.mime.base import MIMEBase                        # Общий тип
-from email.mime.text import MIMEText                        # Текст/HTML
-from email.mime.image import MIMEImage                      # Изображения
-from email.mime.audio import MIMEAudio                      # Аудио
-from email.mime.multipart import MIMEMultipart              # Многокомпонентный объект
-import os
+from google.oauth2 import service_account
+from googleapiclient.http import MediaIoBaseDownload,MediaFileUpload
+from googleapiclient.discovery import build
+import pprint
+from datetime import date
+from dateutil import parser
+
+# Функция получения id главной папки
+import GUI
 
 
-def send_email(addr_to, msg_subj, msg_text, files):
-    addr_from = "sasha.lorens@yandex.ru"                         # Отправитель
-    password  = "LeNoVo_13572468"                                  # Пароль
+def Get_main_folder_id(service):
+    # Производим поиск среди папок по названию
+    results = service.files().list(
+        pageSize=1,
+        fields=" files(id, name, mimeType, parents, createdTime)",
+        q="name contains 'Remote_Stand_930' and mimeType='application/vnd.google-apps.folder'").execute()
+    #pp.pprint(results['files'])
+    file_info = results['files']
+    # Получаем id главной папки
+    main_folder_id = [item['id'] for item in file_info]
+    #print(main_folder_id)
+    # Переводим id из списка в строку
+    str1 = ''.join(main_folder_id)
+    main_folder_id = str1
+    return main_folder_id
 
-    msg = MIMEMultipart()                                   # Создаем сообщение
-    msg['From'] = addr_from  # Адресат
-    msg['To'] = addr_to  # Получатель
-    msg['Subject'] = msg_subj  # Тема сообщения
+# Функия по созданию папки пользователя по названию почты
+def Folder_create(service, Users_drive, main_folder_id):
+    ####### Раскомментировать данный отрезок, если необходимо единоразово создавать только 1 папку пользователя
+    # results = service.files().list(
+    #     pageSize=1,
+    #     fields="files(id, name, mimeType, parents, createdTime)",
+    #     q="name contains '" + Users_drive + "' and mimeType='application/vnd.google-apps.folder'").execute()
+    # file_info = results['files']
+    # folder_id = [item['id'] for item in file_info]
+    # #print(folder_id)
+    # str1 = ''.join(folder_id)
+    # folder_id = str1
+    # if folder_id != '':
+    #      service.files().delete(fileId='{}'.format(folder_id)).execute()
 
-    body = msg_text                                         # Текст сообщения
-    msg.attach(MIMEText(body, 'plain'))                     # Добавляем в сообщение текст
+    # Создание папки пользователя внутри главной папки
+    folder_id = main_folder_id
+    name = Users_drive
+    # Задаем основные данные папки пользователя
+    file_metadata = {
+        'name': name,
+        'mimeType': 'application/vnd.google-apps.folder',
+        'parents': [folder_id]
+    }
+    # Создание папки с необходимыми метаданными
+    r = service.files().create(body=file_metadata,
+                               fields='id').execute()
+    #pp.pprint(r)
+    Folder_id = r['id']
+    #print(Folder_id)
+    return Folder_id
 
-    process_attachement(msg, files)
+# Функция загрузки файлов пользователя
+def File_upload(service, folder_id, file_path):
+    # folder_id = '1PSD7Dutt6TIJqFmlM902oW70mFPy6pPH'
+    # Задаем метаданные архива файлов пользователя
+    name = 'rezult.zip'
+    file_metadata = {
+        'name': name,
+        'mimeType': 'application/octet-stream',
+        'parents': [folder_id]
+    }
+    # Задаем путь до загружаемых файлов, и необходимый mimetype
+    media = MediaFileUpload(file_path, mimetype='application/octet-stream', resumable=True)
+    # Загрузка файлов
+    r = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    # Тело запроса назначения прав
+    file_permission = {"role": "reader", "type": "anyone"}
 
-    #======== Этот блок настраивается для каждого почтового провайдера отдельно ===============================================
-    try:
-        server = smtplib.SMTP_SSL('smtp.yandex.ru', 465)  # Создаем объект SMTP
-        # server.starttls()                                  # Начинаем шифрованный обмен по TLS
-        server.login(addr_from, password)  # Получаем доступ
-        server.send_message(msg)  # Отправляем сообщение
-        server.quit()  # Выходим
-    except Exception as e:
-        print(e)
+    # Назначение прав
+    service.permissions().create(
+        body=file_permission, fileId=r.get("id")
+    ).execute()
 
-    #==========================================================================================================================
+    #pp.pprint(r)
+    # Создаем ссылку на файлы пользователя
+    file_id = r['id']
+    file_link = r"https://drive.google.com/file/d/" + file_id + r"/view?usp=sharing"
+    #print(file_link)
+    return file_link
 
-def process_attachement(msg, files):                        # Функция по обработке списка, добавляемых к сообщению файлов
-    for f in files:
-        if os.path.isfile(f):                                        # Если файл существует
-            attach_file(msg,f)                              # Добавляем файл к сообщению
-        elif os.path.exists(f):                             # Если путь не файл и существует, значит - папка
-            dir = os.listdir(f)                             # Получаем список файлов в папке
-            for file in dir:
-                # Перебираем все файлы и...
-                attach_file(msg,f+"/"+file)
-               # ...добавляем каждый файл к сообщению
+# Функция для удаления устаревших файлов
+def Old_files_delete(main_folder_id, service):
+    main_folder_id = main_folder_id
+    files_deleted = 0
+    # Выводим 30 очередных папок в главной папке
+    results = service.files().list(
+        pageSize=30,
+        fields="files(id, name, mimeType, parents, createdTime)",
+        q="parents='" + main_folder_id + "' and mimeType='application/vnd.google-apps.folder'").execute()
 
-def attach_file(msg, filepath):                             # Функция по добавлению конкретного файла к сообщению
-    filename = os.path.basename(filepath)                   # Получаем только имя файла
-    ctype, encoding = mimetypes.guess_type(filepath)        # Определяем тип файла на основе его расширения
-    if ctype is None or encoding is not None:               # Если тип файла не определяется
-        ctype = 'application/octet-stream'                  # Будем использовать общий тип
-    maintype, subtype = ctype.split('/', 1)                 # Получаем тип и подтип
-    if maintype == 'text':                                  # Если текстовый файл
-        with open(filepath) as fp:                          # Открываем файл для чтения
-            file = MIMEText(fp.read(), _subtype=subtype)    # Используем тип MIMEText
-            fp.close()                                      # После использования файл обязательно нужно закрыть
-    elif maintype == 'image':                               # Если изображение
-        with open(filepath, 'rb') as fp:
-            file = MIMEImage(fp.read(), _subtype=subtype)
-            fp.close()
-    elif maintype == 'audio':                               # Если аудио
-        with open(filepath, 'rb') as fp:
-            file = MIMEAudio(fp.read(), _subtype=subtype)
-            fp.close()
-    else:                                                   # Неизвестный тип файла
-        with open(filepath, 'rb') as fp:
-            file = MIMEBase(maintype, subtype)              # Используем общий MIME-тип
-            file.set_payload(fp.read())                     # Добавляем содержимое общего типа (полезную нагрузку)
-            fp.close()
-            encoders.encode_base64(file)                    # Содержимое должно кодироваться как Base64
-    file.add_header('Content-Disposition', 'attachment', filename=filename) # Добавляем заголовки
-    msg.attach(file)                                        # Присоединяем файл к сообщению
-
-
-
-# Использование функции send_email()
+    #pp.pprint(results['files'])
+    # Получаем id данных папок
+    file_info = results['files']
+    folder_id = [item['id'] for item in file_info]
+    #print(folder_id)
+    # Получаем текущую дату
+    today = date.today()
+    # Получаем дату создания данных папок
+    createdTime = [item['createdTime'] for item in file_info]
+    print(createdTime)
+    delete = 0
+    # Проходим по списку полученных папок
+    for item in range(len(createdTime)):
+        # Получаем дату создания данной папки
+        create_date = "".join(createdTime[item])
+        # Обрезаем дату создания данной папки до дней
+        create_date = create_date.split("T", 1)[0]
+        print(create_date)
+        today = str(today)
+        # Производим парсинг текущей даты и даты создания в временной формат
+        old_date = parser.parse(create_date)
+        cur_date = parser.parse(today)
+        # Выводим дату создания папки, текущую дату, разницу в днях
+        print("Дата создания = ", old_date)
+        #GUI.print_log("Дата создания = ", old_date)
+        print("Текущая дата = ", cur_date)
+        #GUI.print_log("Текущая дата = ", cur_date)
+        print("Разница в днях  = ", cur_date - old_date)
+        #GUI.print_log("Разница в днях  = ", cur_date - old_date)
+        # Получаем возраст папки
+        old_file = str(cur_date - old_date)
+        print(old_file)
+        #GUI.print_log(old_file)
+        if old_file[0] == "0":
+            item += 1
+        else:
+            # Отделяем лишние данные
+            old_file = int(old_file.split(" ", 1)[0])
+            print(old_file)
+            #GUI.print_log(old_file)
+            # Производим удаление папки, если возраст данного файла более 3 дней
+            if old_file > 3:
+                service.files().delete(fileId='{}'.format(folder_id[item])).execute()
+                delete = 1
+                files_deleted += 1
+                return 1
+    if files_deleted > 0:
+        print("Всего файлов удалено = ", files_deleted)
+        GUI.print_log("Всего файлов удалено = ", files_deleted)
+    if delete == 0:
+        return 0
