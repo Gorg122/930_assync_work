@@ -1,233 +1,149 @@
-import queue
-import tkinter as tk
-from tkinter import *
-from tkinter import scrolledtext
-from tkinter import Tk, Frame, Menu
-from threading import *
-import threading
-import subprocess
-import time
-from tkinter import messagebox
-from tkinter.ttk import Progressbar
-import queue
+from google.oauth2 import service_account
+from googleapiclient.http import MediaIoBaseDownload,MediaFileUpload
+from googleapiclient.discovery import build
+import pprint
+from datetime import date
+from dateutil import parser
 
-import quickstart
-from quickstart import *
-import Boards_search
-# from Boards_search import *
-
-global flag_stop
-global thread
-global flag_new
-flag_new = True
-thread = Thread(target=quickstart.CAD_LOOP, daemon=True)
-
-# global thread2
-# thread2 = Thread(target=Boards_search.Board_search, daemon=True)
-
-############################  Стандартные размеры ################################
-common_button_height = 2
-###########################  Функции  ################################
-def TextWrapper(text, win_num):
-    if win_num:
-        log_work_fpga.configure(state='normal')
-        text_field = log_work_fpga
-        text_field.insert(tk.END, text)
-        text_field.update()
-        log_work_fpga.configure(state='disabled')
-    else:
-        log_find_fpga.configure(state='normal')
-        text_field = log_find_fpga
-        text_field.insert(tk.END, text)
-        text_field.update()
-        log_find_fpga.configure(state='disabled')
-
-def print_log(string, string_add=""):
-    string = string + (str(string_add))
-    TextWrapper(string+"\n", 1)
-    string_new = " "
-
-def print_f_log(string, string_add=""):
-    string = string + (str(string_add))
-    TextWrapper(string+"\n", 0)
-    string_new = " "
-
-def clicked_find():  ## Функция запускающая скрипт поиска плат и выводящая результаты в лог
-    # global thread2
-    log_find_fpga.configure(state='normal')
-    print_f_log("Начало поиска")
-    thread2 = Thread(target=Boards_search.Board_search, daemon=True)
-    thread2.start()
-    log_work_fpga.configure(state='disabled')
-
-def del_log():
-    log_find_fpga.configure(state='normal')
-    log_find_fpga.delete(1.0, END)
-    log_work_fpga.configure(state='disabled')
-
-def change_frame():
-    f_top_log.pack()
-    f_bottom_log.pack_forget()
-
-def change_frame_back():
-    f_top_log.pack_forget()
-    f_bottom_log.pack()
-
-def start_work():
-    global flag_stop
-    global thread
-    flag_stop = False
-    log_work_fpga.configure(state='normal')
-    print_log("1111111111")
-    print(thread.is_alive())
-    if not thread.is_alive():
-        thread.start()
-    log_work_fpga.configure(state='disabled')
-
-def check_thread(window, thread):
-    if thread.is_alive():
-        window.after(100, lambda: window.check_thread(thread))
-    else:
-        window.start_work_button.config(state=tk.NORMAL)
-
-def pause_work():
-    global flag_stop
-    log_work_fpga.configure(state='normal')
-    print_log("Поставили на паузу")
-    flag_stop = True
-    log_work_fpga.configure(state='disabled')
+# Функция получения id главной папки
+import GUI
 
 
-def change_status_log(type):
-    if type == "STRW":
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд готов к работе", fill="green")
-    elif (type == "STNP"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Требуется поиск плат", fill="yellow")
-    elif (type == "STP"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд на паузе", fill="yellow")
-    elif (type == "STW"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенл работает...", fill="green")
-    elif (type == "SNW"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Ошибка", fill="red")
+def Get_main_folder_id(service):
+    # Производим поиск среди папок по названию
+    results = service.files().list(
+        pageSize=1,
+        fields=" files(id, name, mimeType, parents, createdTime)",
+        q="name contains 'Remote_Stand_930' and mimeType='application/vnd.google-apps.folder'").execute()
+    #pp.pprint(results['files'])
+    file_info = results['files']
+    # Получаем id главной папки
+    main_folder_id = [item['id'] for item in file_info]
+    #print(main_folder_id)
+    # Переводим id из списка в строку
+    str1 = ''.join(main_folder_id)
+    main_folder_id = str1
+    return main_folder_id
 
-def change_status_find(type):
-    if type == "STRW":
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд готов к работе", fill="green")
-    elif (type == "STNP"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Требуется поиск плат", fill="yellow")
-    elif (type == "STP"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенд на паузе", fill="yellow")
-    elif (type == "STW"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Стенл работает...", fill="green")
-    elif (type == "SNW"):
-        cc.delete("all")
-        cc.create_text(10, 20, anchor=W, font="DejavuSansLight", text="Ошибка", fill="red")
+# Функия по созданию папки пользователя по названию почты
+def Folder_create(service, Users_drive, main_folder_id):
+    ####### Раскомментировать данный отрезок, если необходимо единоразово создавать только 1 папку пользователя
+    # results = service.files().list(
+    #     pageSize=1,
+    #     fields="files(id, name, mimeType, parents, createdTime)",
+    #     q="name contains '" + Users_drive + "' and mimeType='application/vnd.google-apps.folder'").execute()
+    # file_info = results['files']
+    # folder_id = [item['id'] for item in file_info]
+    # #print(folder_id)
+    # str1 = ''.join(folder_id)
+    # folder_id = str1
+    # if folder_id != '':
+    #      service.files().delete(fileId='{}'.format(folder_id)).execute()
 
+    # Создание папки пользователя внутри главной папки
+    folder_id = main_folder_id
+    name = Users_drive
+    # Задаем основные данные папки пользователя
+    file_metadata = {
+        'name': name,
+        'mimeType': 'application/vnd.google-apps.folder',
+        'parents': [folder_id]
+    }
+    # Создание папки с необходимыми метаданными
+    r = service.files().create(body=file_metadata,
+                               fields='id').execute()
+    #pp.pprint(r)
+    Folder_id = r['id']
+    #print(Folder_id)
+    return Folder_id
 
-def on_closing():
-    try:
-        if messagebox.askokcancel("Quit", "Do you want to quit?"):
-            window.destroy()
-    except:
-        print()
-###############################################################
+# Функция загрузки файлов пользователя
+def File_upload(service, folder_id, file_path):
+    # folder_id = '1PSD7Dutt6TIJqFmlM902oW70mFPy6pPH'
+    # Задаем метаданные архива файлов пользователя
+    name = 'rezult.zip'
+    file_metadata = {
+        'name': name,
+        'mimeType': 'application/octet-stream',
+        'parents': [folder_id]
+    }
+    # Задаем путь до загружаемых файлов, и необходимый mimetype
+    media = MediaFileUpload(file_path, mimetype='application/octet-stream', resumable=True)
+    # Загрузка файлов
+    r = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    # Тело запроса назначения прав
+    file_permission = {"role": "reader", "type": "anyone"}
 
-window = Tk()
-window.title('Настройка лаборатореого стенда.')
-window.geometry('400x800')
-# window.resizable(width=False, height=False)
+    # Назначение прав
+    service.permissions().create(
+        body=file_permission, fileId=r.get("id")
+    ).execute()
 
-#########################          Фреймы           ###############################
+    #pp.pprint(r)
+    # Создаем ссылку на файлы пользователя
+    file_id = r['id']
+    file_link = r"https://drive.google.com/file/d/" + file_id + r"/view?usp=sharing"
+    #print(file_link)
+    return file_link
 
-f_top_log = Frame(window)
-f_top_log.pack()
-f_left_top_log = LabelFrame(f_top_log, text="лево")
-f_rigth_top_log = LabelFrame(f_top_log, text="право")
-text_result = LabelFrame(f_top_log, text="Низ")
+# Функция для удаления устаревших файлов
+def Old_files_delete(main_folder_id, service):
+    main_folder_id = main_folder_id
+    files_deleted = 0
+    # Выводим 30 очередных папок в главной папке
+    results = service.files().list(
+        pageSize=30,
+        fields="files(id, name, mimeType, parents, createdTime)",
+        q="parents='" + main_folder_id + "' and mimeType='application/vnd.google-apps.folder'").execute()
 
-f_left_top_log.pack()
-text_result.pack()
-f_rigth_top_log.pack()
-
-
-
-
-f_bottom_log = Frame(window)
-f_bottom_log.pack_forget()
-f_top_annonse = LabelFrame(f_bottom_log, text="Самый верх")
-f_top_bottom_log = LabelFrame(f_bottom_log, text="Вверх")
-f_bottom_bottom_log = LabelFrame(f_bottom_log, text="НИЗ")
-
-f_top_annonse.pack()
-f_top_bottom_log.pack()
-f_bottom_bottom_log.pack()
-
-############################## Меню и подменю ################################
-
-mainmenu = Menu(window)
-window.config(menu=mainmenu)
-mainmenu.add_command(label='Поиск плат', command=change_frame) ####, command=change_frame
-mainmenu.add_command(label='Работа лабораторного стенда', command=change_frame_back) ### , command=change_frame_back
-
-
-####################### Настройка кнопок и их рассположения #############
-lbl = Label(f_left_top_log, text="Поиск всевозможных \n подключенных плат", font=("Arial Bold", 14), width=100)
-lbl.pack(side=TOP,  fill=X)
-
-settings_button = Button(f_left_top_log, text="Начать поиск", width=30, command=clicked_find, height=common_button_height)
-settings_button.pack(side=BOTTOM)
-
-clearlog_button = Button(f_rigth_top_log, text="Очистить лог", command=del_log, width=30, height=common_button_height)
-clearlog_button.pack(side=BOTTOM)
-
-c = Canvas(text_result, height=30, bg='white')
-c.pack(fill=Y)
-
-# Кнопки второго окна &&&&&&&&&&&&&&&&&&
-
-start_work_button = Button(f_top_bottom_log, text="Запуск", width=30, command=start_work, height=common_button_height)
-start_work_button.pack(side=LEFT)
-stop_work_button = Button(f_top_bottom_log, text="Стоп", width=30, command=pause_work, height=common_button_height)
-stop_work_button.pack(side=RIGHT)
-
-
-cc = Canvas(f_top_annonse, height=30, bg='white')
-cc.pack(fill=Y)
-
-
-
-# clearlog_button.grid(column=1, row=5)
-#########################################################################
-###########################   Добавление эллементов для вывода консоли   ##################################
-
-log_find_fpga = scrolledtext.ScrolledText(f_rigth_top_log, height=25)
-log_find_fpga.configure(state='disabled')
-log_find_fpga.pack(side=TOP, fill=X)
-
-log_work_fpga = scrolledtext.ScrolledText(f_bottom_bottom_log, height=25)
-log_work_fpga.configure(state='disabled')
-log_work_fpga.pack(side=TOP, fill=X)
-######################################################################
-######################### Окна ошибок  ############################
-
-# messagebox.showwarning('Заголовок', 'Текст')  # показывает предупреждающее сообщение
-# messagebox.showerror('Заголовок', 'Текст')  # показывает сообщение об ошибке
-
-##################################################################
-def main_start_gui():
-    try:
-        window.protocol("WM_DELETE_WINDOW", on_closing)
-    except:
-        print("ff")
-    window.mainloop()
-
-main_start_gui()
+    #pp.pprint(results['files'])
+    # Получаем id данных папок
+    file_info = results['files']
+    folder_id = [item['id'] for item in file_info]
+    #print(folder_id)
+    # Получаем текущую дату
+    today = date.today()
+    # Получаем дату создания данных папок
+    createdTime = [item['createdTime'] for item in file_info]
+    print(createdTime)
+    delete = 0
+    # Проходим по списку полученных папок
+    for item in range(len(createdTime)):
+        # Получаем дату создания данной папки
+        create_date = "".join(createdTime[item])
+        # Обрезаем дату создания данной папки до дней
+        create_date = create_date.split("T", 1)[0]
+        print(create_date)
+        today = str(today)
+        # Производим парсинг текущей даты и даты создания в временной формат
+        old_date = parser.parse(create_date)
+        cur_date = parser.parse(today)
+        # Выводим дату создания папки, текущую дату, разницу в днях
+        print("Дата создания = ", old_date)
+        #GUI.print_log("Дата создания = ", old_date)
+        print("Текущая дата = ", cur_date)
+        #GUI.print_log("Текущая дата = ", cur_date)
+        print("Разница в днях  = ", cur_date - old_date)
+        #GUI.print_log("Разница в днях  = ", cur_date - old_date)
+        # Получаем возраст папки
+        old_file = str(cur_date - old_date)
+        print(old_file)
+        #GUI.print_log(old_file)
+        if old_file[0] == "0":
+            item += 1
+        else:
+            # Отделяем лишние данные
+            old_file = int(old_file.split(" ", 1)[0])
+            print(old_file)
+            #GUI.print_log(old_file)
+            # Производим удаление папки, если возраст данного файла более 3 дней
+            if old_file > 3:
+                service.files().delete(fileId='{}'.format(folder_id[item])).execute()
+                delete = 1
+                files_deleted += 1
+                return 1
+    if files_deleted > 0:
+        print("Всего файлов удалено = ", files_deleted)
+        GUI.print_log("Всего файлов удалено = ", files_deleted)
+    if delete == 0:
+        return 0
