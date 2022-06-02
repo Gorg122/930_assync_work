@@ -6,575 +6,935 @@ import serial
 import sys
 import subprocess
 import configparser
-from win32com.shell import shell, shellcon
+import pprint
+import win32com.client
+from datetime import date
+from dateutil import parser
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
-from SOF_TO_FPGA_4 import FPGA_flash
-from Find_arduino_v2 import Find_Arduino
+import GUI
+from Sof_to_FPGA import FPGA_flash
+from Find_arduino import Find_Arduino
+from Google_drive_upload import File_upload
+from Google_drive_upload import Folder_create
+from Google_drive_upload import Get_main_folder_id
+from Google_drive_upload import Old_files_delete
 
+# Счетчик комманд пользователя
+global command_num
+command_num = -1
+global pr_type
+pr_type = 100
+
+# Функция поиска файла сценария пользователя
+
+def Find_files_by_name(dir_path, filename):
+    for root, dirs, files in os.walk(dir_path):  # В цикле проходим все папки и файлы в корневой папке
+        if filename in files:   # Производим поиск по названию файла
+            filepath = root + '/' + filename  # Добавляем в путь папки и необходимый файл
+            return filepath
+    print("Такого файла нет")
+    return 0
+
+def Find_files_by_ext(dir_path, file_ext):
+    for root, dirs, files in os.walk(dir_path):  # В цикле проходим все папки и файлы в корневой папке
+        for file in files:
+            if file.endswith(file_ext):     # Производим поиск по расширению файла
+                filepath = root + '/' + file  # Добавляем в путь папки и необходимый файл
+                return filepath
+    print("Такого файла нет")
+    return 0
 
 def Script_file_detect(User_path_to_file, root_path, errs_path):
-
+    print(root_path)
+    # Создание файла с текущими ошибками в файле скрипта
     errors_file = open(errs_path, "w")
-
     script_file_path = "%"
 
-    for root, dirs, files in os.walk(User_path_to_file):
-        for file in files:
-            if file.endswith(".txt") \
-                    and not file.endswith(".sof") \
-                    and not (file.endswith("JTAG_config.txt")) \
-                    and not (file.endswith("Compil_result.txt")) \
-                    and not (file.endswith("errors.txt")) \
-                    and not (file.endswith("video_timing.txt")) \
-                    and not (root == "db"):
-                script_file_path = root + '/' + file
-                #result_dir = os.path.join(root_path, root)
-                script_file_name = file
-                script_file_path = root_path + "/" + script_file_path
-                print(script_file_path)
+    # Поиск файла скрипта, создание переменной пути к данному файлу
+    if User_path_to_file != "":
+        for root, dirs, files in os.walk(root_path + '/' + User_path_to_file):
+            for file in files:
+                if file.endswith(".txt") \
+                        and not file.endswith(".sof") \
+                        and not (file.endswith("JTAG_config.txt")) \
+                        and not (file.endswith("Compil_result.txt")) \
+                        and not (file.endswith("errors.txt")) \
+                        and not (file.endswith("video_timing.txt")) \
+                        and not (root == "db"):
+                    script_file_name = file
+                    script_file_path = root + '/' + script_file_name
+                    print(script_file_path)
+                    GUI.print_log("Путь к файлу сценария ", script_file_path)
 
+    # Обработка случая отсутствия файла сценария, или возврат имени файла и пути к нему
     if not os.path.exists(script_file_path):
         errors_file.write("Отсутствует файл сценария\n")
         errors_file.close()
-        return("Neok", "Neok")
+        return ("Neok", "Neok")
     else:
-        #return("OK")
         errors_file.close()
-        return(script_file_path, script_file_name)
+        return (script_file_path, script_file_name)
+
+
+# Скрипт передачи управляющих команд на плату Ардуино
+def Serial_delivery(arduino, cur_action, curent_pin, sleep, sleep_dur):
+    # Словарь текущих состояний переключателей
+    switches = dict([(1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0)])
+    # Распознаем текущую команду
+    if cur_action:
+        # Проверяем текущее состояние переключателя
+        if switches[int(curent_pin)] == 1:
+            comand_sw1 = str(curent_pin) + "L"
+            switches[int(curent_pin)] = 0
+        else:
+            comand_sw1 = str(curent_pin) + "H"
+            switches[int(curent_pin)] = 1
+        arduino.write(bytes(comand_sw1, 'utf-8'))
+        time.sleep(1)
+        # Получаем ответ от платы Ардуино об удачной отправке данного сигнала
+        data = str(arduino.readline().decode().strip('\r\n'))
+        time.sleep(1)
+        print(data, '\n')
+        GUI.print_log("Номер пина распознанный на плате ", data)
+        # Изменяем состояние данного переключателя в словаре на текущее
+        if sleep:
+            print("sleep for ", sleep_dur)
+            GUI.print_log("sleep for ", sleep_dur)
+            time.sleep(sleep_dur)
+            print("sleep is over")
+            GUI.print_log("sleep is over")
+
+    else:
+        comand_but1 = str(curent_pin) + "H"
+        arduino.write(bytes(comand_but1, 'utf-8'))
+        time.sleep(1)
+        # Получаем ответ от платы Ардуино об удачной отправке данного сигнала
+        data = str(arduino.readline().decode().strip('\r\n'))
+        time.sleep(1)
+        print(data, '\n')
+        GUI.print_log("Номер пина распознанный на плате ", data)
+
+        comand_but2 = str(curent_pin) + "L"
+        arduino.write(bytes(comand_but2, 'utf-8'))
+        time.sleep(1)
+        # Получаем ответ от платы Ардуино об удачной отправке данного сигнала
+        data = str(arduino.readline().decode().strip('\r\n'))
+        time.sleep(1)
+        print(data, '\n')
+        GUI.print_log("Номер пина распознанный на плате ", data)
+        # Запускаем процесс ожидания задержки, указанной пользователем
+        if sleep:
+            print("sleep for ", sleep_dur)
+            GUI.print_log("sleep for ", sleep_dur)
+            time.sleep(sleep_dur)
+            print("sleep is over")
+            GUI.print_log("sleep is over")
+
+            # Передаем сигнал о необходимости перевести в неактивное положение необходимую кнопку
+            comand_but2 = str(curent_pin) + "L"
+            arduino.write(bytes(comand_but2, 'utf-8'))
+            time.sleep(1)
+            # Получаем ответ от платы Ардуино об удачной отправке данного сигнала
+            data = str(arduino.readline().decode().strip('\r\n'))
+            time.sleep(1)
+            print(data, '\n')
+            GUI.print_log("Номер пина распознанный на плате ", data)
+
 
 def Arduino_Serial(script_file_path, errs_path, Arduino_port):
+    # Открываем файл сценария
     input_file = open(script_file_path)
 
+    config = configparser.ConfigParser()
+    config.read("Config.ini")
 
+    # Выведем общее количество строк в файле
     print(len(re.findall(r"[\n']+?", open(script_file_path).read())))
     all_strings = len(re.findall(r"[\n']+?", open(script_file_path).read()))
 
-    # выведем количество без пустых строк
+    # Выведем количество без пустых строк
     print(len(re.findall(r"[\n']+", open(script_file_path).read())))
+    GUI.print_log("Строк в файле сценария ", len(re.findall(r"[\n']+", open(script_file_path).read())))
     strings = len(re.findall(r"[\n']+", open(script_file_path).read()))
-
-    video_file = open("video_timing.txt", "w")
-    video_file.write(str(strings * 4))
-    video_file.close()
-
-
-    time.sleep(3)
 
     time.sleep(1)
 
+    # Открываем файл текущими ошибками в файле скрипта
     errors_file = open(errs_path, "w")
 
+    # Построчно читаем файл сценария
     lines = input_file.readlines()
 
-    curent_pin = 0
-    but = ["button"]
-    sw = ["switch"]
+    # Задаем основные переменные для распознавания файла сценария
+    but = ["button", "but", "But", "Button"]
+    sw = ["switch", "sw", "Switch", "Sw"]
     end = ["end"]
-    #numbers = ["09"]
     delay = ["delay"]
-    start = ["ardok"]
-    switches = dict([(1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0)])
+    # start = ["ardok"]
+    start = config['Arduino']['arduino_key']
     current_commands = 0
 
+    # Подключаемся к плату Ардуино через последовательный порт, к заранее определенному COM порту
     arduino = serial.Serial(port=Arduino_port, baudrate=9600, timeout=.1)
     y = 0
-
-    # waiting for device
+    # Ожидаем успешного подключения
     time.sleep(3)
 
+    # Отправляем контрольную последовательность и ожидаем положительного ответа
     while y != 1:
         poslanie = "Hello"
-        print("prohodka")
-        # st = str(poslanie)
+        print("Подключение к плате Ардуино")
+        GUI.print_log("Подключение к плате Ардуино")
         arduino.write(bytes(poslanie, 'utf-8'))
-        # data = arduino.readline()
-        # data = arduino.read(arduino.inWaiting())
         data = str(arduino.readline().decode().strip('\r\n'))
         if str(data).count(start[0]):
-            print("Poluchenorazhreshenie")
-            # data = ""
-            # poslanie = "1H"
-            # arduino.write(bytes(poslanie, 'utf-8'))
+            print("Контрольная последовательность получена")
+            GUI.print_log("Контрольная последовательность получена")
             y += 1
-    # data = arduino.read(arduino.inWaiting())
+
+    # Начало передачи управляющих сигналов на плату Ардуино
     print("Начало передачи сигналов")
+    GUI.print_log("Начало передачи сигналов")
+    # Выполняем проходку по непустым строкам файла сценария
     for i in range(strings):
 
+        # Поиск численного значения в строке
         num = re.findall(r'\d+', str(lines[i]))
         false_pin = False
+        cur_action = 2
+        sleep = 0
 
+        # Собираем число из списка отдельных чисел в строке
         for item in num:
             numbers = int(item)
-        if (lines[i] != "\n"):
+
+        # Определяем текущее действие (нажаите кнопки или нажатие переключателя)
+        for j in range(len(but)):
+            if (lines[i].count(but[j])):
+                cur_action = 0      # Текущей командой является нажатие кнопки
+            elif (lines[i].count(sw[j])):
+                cur_action = 1      # Текущеу командой является переключение переключателя
+
+        # Определяем наличие задержки по времени к данному действию
+        if (lines[i + 1].count(delay[0])) and (cur_action != 2):
+            sleep = 1
+            sleep_num = re.findall(r'\d+', str(lines[i + 1]))
+            for item in sleep_num:
+                sleep_dur = int(item)
+
+            # Обработка ошибки слишком большой длительности записи видео (с указанием конкретной строки)
+            if sleep_dur > 30:
+                delay_string = i + 1
+                errors_file.write("Длительность задержки не больше 30 секунд (строка: " + str(delay_string) + ")\n")
+
+        # В случае, если строка не пустая, определяем верно ли указаны номера кнопок и переключателей
+        if lines[i] != "\n" and lines[i] != "":
             print(numbers)
-            if (int(numbers) > 8) or (int(numbers) < 1):
-                i += 1
-                false_pin = True
-                errors_file.write("Количество активных пинов равно 9 (строка " + str(i) + ")\n")
-                print("not write pin\n")
+            GUI.print_log("Номер текущего пина ", numbers)
+            if (sleep != 1) and (cur_action != 2):
+
+                # Если номер кнопки или переключателя больше 8 или меньше 1, данная команда не обрабатывается
+                if (int(numbers) > 8) or (int(numbers) < 1):
+                    i += 1
+                    false_pin = True
+
+                    # Запись ошибки невверно указанного номера пина (с указанием конкретной строки)
+                    errors_file.write("Количество активных пинов равно 9 (строка " + str(i) + ")\n")
+                    print("Неверно указан номер пина\n")
+                    GUI.print_log("Неправильно указан номер пина")
+        # Если строка пустая, пропускаем её
         if (lines[i] == "\n"):
             i += 1
 
+        # В случае, если номер пина введен верно, и строка не является пустой, начинаем обработку команды
         elif (false_pin == False):
-            if (lines[i].count(but[0])):  # Кнопки
-                curent_pin = num[0]
-                comand_but1 = str(curent_pin) + "H"
-                y = 0
-                data = ""
-                # while y != 1:
-                arduino.write(bytes(comand_but1, 'utf-8'))
-                time.sleep(0.5)
-                data = str(arduino.readline().decode().strip('\r\n'))
-                time.sleep(0.5)
-                #print(data,'\n')
-                #arduino.write(comand_but1)
-                # arduino.write(bytes("", 'utf-8'))
-                #time.sleep(1)
-                # if data.count(h1[0]):
-                # y += 1
-                #print("EST")
-                # arduino.write(bytes("Hoy", 'utf-8'))
-                #print(comand_but1)
-                #time.sleep(0.1)
-                print(data,'\n')
-                data = ""
-                #time.sleep(0.1)
-                comand_but2 = str(curent_pin) + "L"
-                arduino.write(bytes(comand_but2, 'utf-8'))
-                #arduino.write(comand_but2)
-                #print(comand_but2)
-                time.sleep(0.5)
-                data = str(arduino.readline().decode().strip('\r\n'))
-                time.sleep(0.5)
-                print(data,'\n')
-                current_commands += 1
-                data = ""
-                # print("digitalWrite(pin" + str(curent_pin) + ", HIGH);\n delay(100)\n digitalWrite(pin"+str(curent_pin)+", LOW);\n")
-                #
-                # output_file.write("digitalWrite(pin" + str(curent_pin) + ", HIGH);\n delay(100);\n digitalWrite(pin"+str(curent_pin)+", LOW);\n")
-            # elif (lines[i].count(sw[0])):
-            #     if switches[i-1] == 0:
-            #         print("digitalWrite(pin" + str(lines[i][-2]) + ", HIGH);\n sleep(500)\n")  # digitalWrite(pin"+str(lines[i][-2])+", LOW);\n")
-            #         output_file.write("digitalWrite(pin" + str(lines[i][-2]) + ", HIGH);\n sleep(500)\n") #digitalWrite(pin"+str(lines[i][-2])+", LOW);\n")
-            #         switches[i-1] = 1
 
-            elif (lines[i].count(sw[0])) and (switches[int(num[0])] == 0) and (false_pin != True):  # Свитч 0
-                curent_pin = num[0]
-                # print("digitalWrite(pin" + str(curent_pin) + ", HIGH);\n delay(100);\n")  # digitalWrite(pin"+str(lines[i][-2])+", LOW);\n")
-                # output_file.write("digitalWrite(pin" + str(curent_pin) + ", HIGH);\n delay(100);\n") #digitalWrite(pin"+str(lines[i][-2])+", LOW);\n")
-                # switches[int(curent_pin)] = 1
-                comand_sw1 = str(curent_pin) + "H"
-                arduino.write(bytes(comand_sw1, 'utf-8'))
-                #print(comand_sw1)
-                time.sleep(0.5)
-                data = str(arduino.readline().decode().strip('\r\n'))
-                time.sleep(0.5)
-                print(data,'\n')
-                #time.sleep(0.1)
-                switches[int(curent_pin)] = 1
-                current_commands += 1
-                data = ""
+            # Обработка команд управления
+            # Обработка нажатия переключателя
+            if (cur_action):
+                # Проверяем данную команду на предмет установленных задержек
+                if sleep:
+                    # Запускаем функцию передачи управляющего сигнала на плату Arduino
+                    Serial_delivery(arduino, 1, num[0], 1, sleep_dur)
+                    current_commands += 1
+                else:
+                    Serial_delivery(arduino, 1, num[0], 0, 0)
+                    current_commands += 1
 
-            elif (lines[i].count(sw[0])) and switches[int(num[0])] == 1 and false_pin != True:  # Свитч 1
-                curent_pin = num[0]
-                # print("digitalWrite(pin" + str(curent_pin) + ", LOW);\n delay(100);\n")  # digitalWrite(pin"+str(lines[i][-2])+", LOW);\n")
-                # output_file.write("digitalWrite(pin" + str(curent_pin) + ", LOW);\n delay(100);\n") #digitalWrite(pin"+str(lines[i][-2])+", LOW);\n")
-                # switches[int(curent_pin)] = 0
-                # switches.insert(int(lines[i][-2]),1)
-                comand_sw2 = str(curent_pin) + "L"
-                arduino.write(bytearray(comand_sw2, 'utf-8'))
-                #print(comand_sw2)
-                time.sleep(0.5)
-                data = str(arduino.readline().decode().strip('\r\n'))
-                time.sleep(0.5)
-                print(data,'\n')
-                #time.sleep(0.1)
-                switches[int(curent_pin)] = 0
-                current_commands += 1
-                data = ""
+            # Обработка нажатия кнопки
+            else:
+                # Проверяем данную команду на предмет установленных задержек
+                if sleep:
+                    Serial_delivery(arduino, 0, num[0], 1, sleep_dur)
+                    current_commands += 1
+                else:
+                    Serial_delivery(arduino, 0, num[0], 0, 0)
+                    current_commands += 1
 
-            elif (lines[i].count(end[0])):
+            # Определяем ключ окончания обработки файла сценария
+            if (lines[i].count(end[0])):
                 print(switches)
+                # Закрываем файл сценария пользователя
                 input_file.close()
-                print(current_commands)
+                # Выводим итоговое количество команд в файле сценария
+
                 break
-    # output_file.close()
+    # Закрываем файл ошибок, и ещё раз закрываем файл сценария
     input_file.close()
     errors_file.close()
-    return("Ok")
+    print("Total_commands = ", current_commands)
+    GUI.print_log("Всего команд в файле сценария ", current_commands)
+    # = current_commands
+    return ("Ok", current_commands)
 
-def File_switch(User_path_to_file, root_path, sof_path, script_file_path, sof_file_name, script_file_name, vid_chek):
-    # serial.Serial.close(arduino)
 
+# Функция проверки на пустые файлы
+def File_empty_chek(users_dir, file_name):
+    chek_file = ""
+    for files in os.listdir(users_dir):
+        if files.find(file_name) != -1:
+            file_r = open(files)
+            # Записываем из файла первые 2 символа
+            chek_file = file_r.read(2)
+            file_name = files
+            file_r.close()
+            # print(chek_file, '\n')
+    return chek_file, file_name
+
+# Функция копирования и удаления основных файлов пользователя после завершения процесса обработки сценария
+def File_switch(User_path_to_file, root_path, sof_path, script_file_path, sof_file_name, script_file_name,
+                video_return):
+    # Формируем переменную пути по текущей папке пользвоателя
     users_dir = root_path + '/' + User_path_to_file
+
+    # Если архив с файлами не удален, удаляем его
     if os.path.exists(root_path + '/' + User_path_to_file + "/filename.zip"):
         os.remove(root_path + '/' + User_path_to_file + "/filename.zip")
 
-    chek = 1
-
+    # Изменяем текущую директорию на директорию пользователя
     os.chdir(users_dir)
     print(users_dir, '\n')
+    GUI.print_log("Текущая дирректория пользователя", users_dir)
 
-    chek1 = ""
-    chek2 = ""
-    chek3 = ""
+    # Задаем стоковые значения файлов
+    chek_errors_file = ""
+    chek_compil_file = ""
+    chek_JTAG_file = ""
     log_name = "@"
     er_name = "$"
     config_file = "!"
-    for files in os.listdir(users_dir):
-        if files.find("errors.txt") != -1:
-            check_er = open(files)
-            chek1 = check_er.read(2)
-            er_name = files
-            check_er.close()
-            # print(chek1, '\n')
 
-        print('\n')
+    # Читаем каждый файл и записываем их данные в отдельную переменную
+    chek_errors_file, er_name = File_empty_chek(users_dir, 'errors.txt')
+    chek_compil_file, log_name = File_empty_chek(users_dir, "Proj_compil_result.txt")
+    chek_JTAG_file, config_file = File_empty_chek(users_dir, "JTAG_config.txt")
 
-        if files.find("Proj_compil_result.txt") != -1:
-            check_comp = open(files)
-            chek2 = check_comp.read(2)
-            log_name = files
-            check_comp.close()
-            # print(chek2, '\n')
-
-        time.sleep(2)
-
-        if files.find("JTAG_config.txt") != -1:
-            check_conf = open(files)
-            chek3 = check_conf.read(2)
-            config_file = files
-            check_conf.close()
-            # print(chek2, '\n')
-
-        # config_name = "JTAG_config.txt"
-        # if config_name in files:
-        #     config_file = files
-        #     #print(chek2, '\n')
-
+    # Создаем переменные путей к файлам ошибок, отчета компиляции, и отчета прошивки платы ПЛИС
     errs_file_path = users_dir + "/" + er_name
     compil_path = users_dir + "/" + log_name
     config_path = users_dir + "/" + config_file
 
-    if chek1 == "" and os.path.exists(errs_file_path):
+    # Если файлы пустые, удаляем их
+    if chek_errors_file == "" and os.path.exists(errs_file_path):
         os.remove(errs_file_path)
 
-    if chek2 == "" and os.path.exists(compil_path):
+    if chek_compil_file == "" and os.path.exists(compil_path):
         os.remove(compil_path)
 
-    if chek3 == "" and os.path.exists(config_path):
+    if chek_JTAG_file == "" and os.path.exists(config_path):
         os.remove(config_path)
 
-    # Перемещение файлов в конечную папку пользователя
+    # Создаем конечную папку пользователя, если её не существует
     if not os.path.exists(users_dir + "/" + "Report"):
         os.mkdir(users_dir + "/" + "Report")
 
-    print("File with errors = " + er_name, '\n')
+    # Перемещение файлов в конечную папку пользователя
+    print("File with errors = " + er_name)
+    er_name = "".join(er_name)
+    GUI.print_log("File with errors = " + er_name)
     if os.path.exists(errs_file_path):
         print("Перенос файла ошибок\n")
+        GUI.print_log("Перенос файла ошибок\n")
         shutil.copy(errs_file_path, users_dir + "/" + "Report" + "/" + er_name)
         time.sleep(1)
         os.remove(errs_file_path)
 
-    print("File_compil = " + log_name, '\n')
+    print("File_compil = " + log_name)
+    GUI.print_log("File_compil = " + log_name)
     if os.path.exists(compil_path):
         print("Перенос файла отчета компиляции\n")
+        GUI.print_log("Перенос файла отчета компиляции\n")
         shutil.copy(compil_path, users_dir + "/" + "Report" + "/" + log_name)
         time.sleep(1)
         os.remove(compil_path)
 
     print("Config file = " + config_file)
+    GUI.print_log("Config file = " + config_file)
     if os.path.exists(config_path):
         print("Перенос файла отчета прошивки\n")
+        GUI.print_log("Перенос файла отчета прошивки\n")
         shutil.copy(config_path, users_dir + "/" + "Report" + "/" + config_file)
         time.sleep(1)
         os.remove(config_path)
 
     print("TXT_script_file = ", script_file_path)
+    GUI.print_log("TXT_script_file = ", script_file_path)
     print(script_file_path, '\n')
     if os.path.exists(script_file_path):
         print("Перенос файла сценария\n")
+        GUI.print_log("Перенос файла сценария\n")
         shutil.copy(script_file_path, users_dir + "/" + "Report" + "/" + script_file_name)
         time.sleep(1)
         os.remove(script_file_path)
 
     print("SOF_FILE = ", sof_path)
+    GUI.print_log("SOF_FILE = ", sof_path)
     print(sof_path, '\n')
     if os.path.exists(sof_path):
         print("Перенос файла прошивки\n")
+        GUI.print_log("Перенос файла прошивки\n")
         shutil.copy(sof_path, users_dir + "/" + "Report" + "/" + sof_file_name)
         time.sleep(1)
         os.remove(sof_path)
 
-
-    marker = ["done"]
-    video_fragment = "subprocess.Popen object at"
-
-    # Проверка на окончание записи видео
-    video_end_chek = "<_io.BufferedReader name=4>"
-    # video_found = True
-    # while video_found:
-    #     try:
-    #         vid_chek = str(Video_chek.stdout)
-    #         if vid_chek.find(video_end_chek) != -1:
-
-
-    print(vid_chek, '\n')
+    # print(vid_chek, '\n')
     i = 0
     video_path = root_path + "/video/output.mp4"
     video_dir = root_path + "/video"
     copy_dst = root_path + "/" + User_path_to_file + "/Report/output.mp4"
     vid_exists = True
 
-    # def mycopy(src, dst, follow_symlinks=True):
-    #     print("video_copying")
-    #     shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
-    #     return "OK"
-
-    def mycopy(src, dst, follow_symlinks=True):
-        print("video_copying")
-        shutil.copy(src=src, dst=dst, follow_symlinks=follow_symlinks)
-        #
-        return "OK"
-    # def robocopy(source, destination, extension=''):
-    #     os.system("robocopy {} {} {} /xx /njh".format(source, destination, extension))
-    #     return "OK"
+    # Производим проверку окончания записи видео
     while vid_exists:
-        # if os.path.exists(prot_dir + "video_done.txt"):
-        # vid_chek= open("video_done.txt")
-        # video_chek = vid_chek.readline()
-        # print("File_read,'\n")
-        # if os.path.exists("output.mp4") and (video_chek.count(marker)):
-        # print(Video_chek)
+        print(video_return)
+        # Проверяем существует ли видео, и файл окончания записи видео
+        if os.path.exists(video_path) and os.path.exists(root_path + "/video_done.txt"):
+            print("Видео записано", '\n')
+            GUI.print_log("Видео записано")
+            time.sleep(5)
 
-        if os.path.exists(video_path) and os.path.exists(root_path + "/video_done.txt") \
-                and vid_chek.find(video_end_chek) != -1:  # Video_chek.stdout != "b''":
-            print("File_est", '\n')
-            time.sleep(20)
-            #shutil.copy(video_path, copy_dst, follow_symlinks=True)
-            #os.popen('copy ' + video_path + " " + copy_dst)
-            shutil.copytree(video_dir, (root_path + '/' + User_path_to_file + "/Report/output.mp4"),
-                            copy_function=mycopy)
-            time.sleep(20)
-            #shutil.copytree(video_path, (root_path + '/' + User_path_to_file + "/Report/output.mp4"), copy_function=mycopy)
-            #copy_chek = robocopy(source=root_path, destination=root_path + '/' + User_path_to_file + "/Report", extension='*.mp4')
-            # shutil.copytree(video_dir, (root_path + '/' + User_path_to_file + "/Report/output.mp4"),
-            #                 copy_function=mycopy, dirs_exist_ok=True)
-            # a = mycopy(src=video_path, dst=root_path + '/' + User_path_to_file + "/Report/output.mp4")
-            # if a == "OK":
-            #     print("video_copied")
-            #     #os.remove(video_path)
-            # #print("Video_copied")
-            # #if copy_chek == "OK":
-            print("Видео удаляется")
-            os.remove(video_path)
-            time.sleep(20)
+            # Проивзодим копирование видео в конечную папку пользвоателя
+            copy_chek = copy_with_progress(src=video_path, dst=copy_dst)
+
+            # После возврата флага окончания копирования, удаляем видео в первоначальной папке
+            if copy_chek == "OK":
+                print("\n")
+                print("Видео удаляется")
+                GUI.print_log("\nВидео удаляется")
+                os.remove(video_path)
+            time.sleep(2)
+
+            # Если видео найдено выходим из цикла проверка на существование видео
             vid_exists = False
-        elif i == 200:
-            i += 1
-            print(i)
-        else:
-            break
-        # else:
-        #     i += 1
-        #     vid_exists = False
+        # Иначе запускаем счетчик ожидания нахождения файла видеозаписи
+        elif i == 20:
+            # print(i)
+            # В случае, если видео не найдено, выводим соответствующее сообщение
+            print("Видео нет")
+            GUI.print_log("Видео нет")
+            # Если видео не найдено выходим из цикла проверка на существование видео
+            vid_exists = False
 
+        else:
+            i += 1
+    return "OK"
+
+# Функция удаления ненужных файлов после окончания обработки прошивки пользователя
+
+def Files_to_archive(path_to_dir, user_name, for_delivery, users_dir):
+    new_path = path_to_dir + '/' + user_name
+    # В случае если папка копирования существует, создаем в ней архив с файлами
+    if os.path.exists(new_path):
+        shutil.rmtree(new_path)
+        os.makedirs(new_path)
+        os.chdir(new_path)
+        shutil.make_archive("result", 'zip', users_dir)
+        if for_delivery:
+            folder_send = "" + new_path
+            return folder_send
+    # В случае, если папка пользователя не существует, создаем ее и архив файлов
+    else:
+        os.makedirs(new_path)
+        os.chdir(new_path)
+        shutil.make_archive("result", 'zip', users_dir)
+
+def Delete_files(root_path, User_path_to_file):
+    users_dir = root_path + '/' + User_path_to_file
+    # Производим поиск файла окончания процесса записи видео
     if os.path.exists(root_path + "/video_done.txt") \
             and os.path.isfile(root_path + "/video_done.txt"):
         print("Удаление файла video_done.txt\n")
+        # Удаляем данный файл
         os.remove(root_path + "/video_done.txt")
 
+    # Производим поиск файла, содержащего длительность записи видео
     if os.path.exists(root_path + "/video_timing.txt") \
             and os.path.isfile(root_path + "/video_timing.txt"):
         print("Удаление файла video_timing.txt\n")
+        # Удаляем данный файл
         os.remove(root_path + "/video_timing.txt")
-    # shutil.make_archive("Your_archive", 'zip', User_path_to_file + "//Your_archive.zip")
-    # archive = zipfile.ZipFile('result.zip', 'w')
-    # for file in os.listdir(users_dir):
-    # archive.write(file, compress_type=zipfile.ZIP_DEFLATED)
+
+    # Задаем папки сохранения архивных записей, а также папку для отправки ответов пользователю
     new_users_dir = root_path + "/Archived"
     archive_dir = root_path + "/Archive"
     os.chdir(new_users_dir)
 
+    # Создаем архив файлов на отправку
     result_directory = User_path_to_file.split('/', 2)[1]
-    if os.path.exists(new_users_dir + "/" + result_directory):
-        shutil.rmtree(new_users_dir + "/" + result_directory)
-        os.mkdir(result_directory)
-        os.chdir(os.path.join(new_users_dir, result_directory))
-        # os.rmdir(new_users_dir + "/" + result_directory)
-        print("Создание архива на отправку/n")
-        shutil.make_archive("result", 'zip', users_dir)
-        #     time.sleep(2)
-        print("Архив на отправку создан/n")
-    else:
-        os.mkdir(result_directory)
-        os.chdir(os.path.join(new_users_dir, result_directory))
-        print("Создание архива на отправку")
-        shutil.make_archive("result", 'zip', users_dir)
-        #     time.sleep(2)
-        print("Архив на отправку создан")
-    if os.path.exists(archive_dir):
-        users_directory = archive_dir + "/" + result_directory
-        if os.path.exists(users_directory):
-            shutil.rmtree(users_directory)
-            os.mkdir(users_directory)
-            os.chdir(users_directory)
-            print("Создание архива в хранилище/n")
-            shutil.make_archive("result", 'zip', users_dir)
-            #     time.sleep(2)
-            print("Архив в хранилище создан/n")
-        else:
-            os.mkdir(users_directory)
-            os.chdir(users_directory)
-            print("Создание архива в хранилище/n")
-            shutil.make_archive("result", 'zip', users_dir)
-            #     time.sleep(2)
-            print("Архив в хранилище создан/n")
-    else:
-        os.chdir(root_path)
-        os.mkdir(archive_dir)
-        users_directory = archive_dir + "/" + result_directory
-        if os.path.exists(users_directory):
-            shutil.rmtree(users_directory)
-            os.mkdir(users_directory)
-            os.chdir(users_directory)
-            print("Создание архива в хранилище/n")
-            shutil.make_archive("result", 'zip', users_dir)
-            #     time.sleep(2)
-            print("Архив в хранилище создан/n")
-        else:
-            os.mkdir(users_directory)
-            os.chdir(users_directory)
-            print("Создание архива в хранилище/n")
-            shutil.make_archive("result", 'zip', users_dir)
-            #     time.sleep(2)
-            print("Архив в хранилище создан/n")
-    return("Ok")
+    print("Создание архива на отправку")
+    folder_send = Files_to_archive(new_users_dir, result_directory, 1, users_dir)
+    print("Архив на отправку создан")
 
-def Launch(User_path_to_file):
+    # Создаем архив файлов в хранилище
+    print("Создание архива в хранилище/n")
+    Files_to_archive(archive_dir, result_directory, 0, users_dir)
+    print("Архив в хранилище создан/n")
+    return folder_send, "Ok"
+
+
+# Функция добавления прогресс-бара
+def progress_percentage(perc, width=None):
+    # Задаем цвет прогресс-бара
+    FULL_BLOCK = '█'
+    # Градиент, сигнализирующий о процессе выполнения
+    INCOMPLETE_BLOCK_GRAD = ['░', '▒', '▓']
+
+    assert (isinstance(perc, float))
+    assert (0. <= perc <= 100.)
+    # Если ширина прогресс-бара не задана
+    if width is None:
+        width = os.get_terminal_size().columns
+    # Прогресс бар - это блочный виджет, perc_widget является разделителем
+    max_perc_widget = '[100.00%]'  # 100% это максимальное значение
+    separator = ' '
+    blocks_widget_width = width - len(separator) - len(max_perc_widget)
+    assert (blocks_widget_width >= 10)  # Не очень важно, если это не так
+    perc_per_block = 100.0 / blocks_widget_width
+    # epsilon - это чувствительность градиента цвета блока выполнения
+    epsilon = 1e-6
+    # Количество блоков, работа над которыми выполнена
+    full_blocks = int((perc + epsilon) / perc_per_block)
+    # Остальные блоки считаются невыполненными
+    empty_blocks = blocks_widget_width - full_blocks
+
+    # Формируем виджет
+    blocks_widget = ([FULL_BLOCK] * full_blocks)
+    blocks_widget.extend([INCOMPLETE_BLOCK_GRAD[0]] * empty_blocks)
+    # remainder - насколько наши блоки разбиты частей
+    remainder = perc - full_blocks * perc_per_block
+    # epsilon необходима для поиска ошибок (должна быть != 0.)
+    # Основываясь на reminder задаем первичный окрас
+    # Зависит от remainder
+    if remainder > epsilon:
+        grad_index = int((len(INCOMPLETE_BLOCK_GRAD) * remainder) / perc_per_block)
+        blocks_widget[full_blocks] = INCOMPLETE_BLOCK_GRAD[grad_index]
+
+    # Формируем виджет демонстрации процента выполнения
+    str_perc = '%.2f' % perc
+    perc_widget = '[%s%%]' % str_perc.ljust(len(max_perc_widget) - 3)
+
+    # Формируем прогресс-бар
+    progress_bar = '%s%s%s' % (''.join(blocks_widget), separator, perc_widget)
+    # Возвращаем прогресс-бар в качестве строки
+    return ''.join(progress_bar)
+
+
+# Функция подсчета текущего процента выполнения
+def copy_progress(copied, total):
+    print('\r' + progress_percentage(100 * copied / total, width=30), end='')
+
+
+# Функция копирования файла
+def copyfile(src, dst, *, follow_symlinks=True):
+    """Копирование данных из src в dst.
+
+Если значение follow_symlinks не задано, а src является символической ссылкой,
+вместо копирования файла, на который она указывает, будет создана новая символическая ссылка.
+
+    """
+    # Проверка на соответствие src и dst
+    if shutil._samefile(src, dst):
+        raise shutil.SameFileError("{!r} и {!r} являются одним и тем же файлом".format(src, dst))
+
+    # Проходка по всем файлам в src и dst
+    for fn in [src, dst]:
+        try:
+            st = os.stat(fn)
+        except OSError:
+            # Файл, скорее всего, не существует
+            pass
+        else:
+            # Проверка на наличие других специфичных файлов
+            if shutil.stat.S_ISFIFO(st.st_mode):
+                raise shutil.SpecialFileError("`%s` является именованным каналом" % fn)
+
+    # Проверка задана ли переменная follow_symlinks
+    if not follow_symlinks and os.path.islink(src):
+        os.symlink(os.readlink(src), dst)
+    # Если переменная задана
+    else:
+        size = os.stat(src).st_size
+        with open(src, 'rb') as fsrc:
+            with open(dst, 'wb') as fdst:
+                copyfileobj(fsrc, fdst, callback=copy_progress, total=size)
+    return dst
+
+
+def copyfileobj(fsrc, fdst, callback, total, length=16 * 1024):
+    copied = 0
+    while True:
+        buf = fsrc.read(length)
+        if not buf:
+            break
+        fdst.write(buf)
+        copied += len(buf)
+        callback(copied, total=total)
+
+
+# Функция копирования файлового объекта из src в dst
+def copy_with_progress(src, dst, *, follow_symlinks=True):
+    # Проверка является ли dst директорией
+    if os.path.isdir(dst):
+        dst = os.path.join(dst, os.path.basename(src))
+    # Вызываем функцию copyfile для выполнения копирования с ожиданием выполнения
+    copyfile(src, dst, follow_symlinks=follow_symlinks)
+    shutil.copymode(src, dst)
+    return "OK"
+
+
+def get_file_metadata(path, filename, metadata):
+    sh = win32com.client.gencache.EnsureDispatch('Shell.Application', 0)
+    ns = sh.NameSpace(path)
+
+    file_metadata = dict()
+    item = ns.ParseName(str(filename))
+    for ind, attribute in enumerate(metadata):
+        attr_value = ns.GetDetailsOf(item, ind)
+        if attr_value:
+            file_metadata[attribute] = attr_value
+
+    return file_metadata
+
+
+def File_deleting(folder):
+    deleting = True
+    while deleting:
+        delete = 0
+        print("Пробегаю")
+        for root, dirs, files in os.walk(folder):
+            for file in files:
+                if file.endswith(".zip"):
+                    file_name = file
+                    file_path = root + "/" + file_name
+                    print(file_path)
+                    filename = file_name
+                    metadata = ['Name', 'Size', 'Item type', 'Date modified', 'Date created']
+                    try:
+                        file_metadata = get_file_metadata(root, filename, metadata)
+                        # print(file_metadata)
+                        date_modify = file_metadata['Date modified']
+                    except:
+                        file_metadata = {'Name': 1, 'Size': 20, 'Item type': "folder", 'Date modified': "28.05.2022",
+                                         'Date created': "28.05.2022"}
+                        date_modify = "1.05.2022"
+                        GUI.print_log("Данные о времени создания файлов получены")
+                    print(date_modify)
+                    today = date.today()
+                    file_date_str = str(date_modify)
+                    file_date = file_date_str.split(" ", 1)[0]
+                    print(file_date)
+                    today = str(today)
+                    old_date = parser.parse(file_date)
+                    cur_date = parser.parse(today)
+                    print("Old_date = ", old_date)
+                    print("Current_date = ", cur_date)
+                    print("Difference = ", cur_date - old_date)
+                    old_file = cur_date - old_date
+                    old_file = str(old_file)
+                    print(old_file)
+                    old_file = old_file.split(" ", 1)[0]
+                    print(old_file)
+                    old_file = old_file.split(':', 1)[0]
+                    old_file = int(old_file)
+                    if old_file > 2:
+                        new_path = file_path.split('/')[:-1]
+                        new_path = ''.join(new_path)
+                        print(new_path)
+                        shutil.rmtree(new_path, ignore_errors=True)
+                        delete = 1
+
+        deleting = False
+        print("Удалять нечего")
+        return "Все файлы удалены"
+
+
+# Главная функция обработки файлов пользователя
+def Launch(User_path_to_file, root_path):
+    global command_num
+    global pr_type
+    errors_ = 0
+    # Перемещаемся в текущую папку проекта
+    os.chdir(root_path)
 
     # Открываем файл настроек
-    #os.chdir(os.getcwd())
-    #os.chdir("C:/PROJECT_930/Prototype_with_mail_bot/")
-
     config = configparser.ConfigParser()
-    config.read("Config.ini")
-    # with open('Config.ini') as configfile:
-    #     config.read(configfile)
-    #
-    #     #Actualised a directory with a script.
-    #     # abspath = os.path.abspath(__file__)
-    #     # dname = os.path.dirname(abspath)
-    #     # os.chdir(dname)
-    #
-    #     # Задаем директорию проекта
-    #     #root_path = config['Path']['root_path']
-    #root_path ="C:/PROJECT_930/Prototype_new_3"
-    root_path = config['Project']['Path']
+    config_path = root_path + '/' + "Config.ini"
+    config.read(config_path)
+
+    # Выводим имеющиеся в файле конфигурации ключи
+    keys = config.keys()
+    for key in keys:
+        print(config[key])
+
+    # Читаем из файла конфигурации текущую папку проекта
+    root_path = config['Direc']['Path']
+
     print(root_path)
+
+    # Созщдаем и открываем файл ошибок
     errs_f = "errors.txt"
     errs_name = root_path + "/" + User_path_to_file
     errs_path = errs_name + '/' + errs_f
     errors_file = open(errs_path, "w")
+    delay = ["delay"]
 
-    #Поиск файла прошивки
-
-    # zip_dir = User_path_to_file.split("/",1)[0]
-    # main_dir = root_path + "/" + zip_dir
-    # print("ZIP DIR PATH = " + zip_dir,'/n')
-    # if os.path.exists(zip_dir):
-    #     for dirs in os.listdir(zip_dir):
-    #         shutil.rmtree(zip_dir + "/" + dirs)
-
+    # Запускаем функцию поиска файла прошивки
     script_file_path, script_file_name = Script_file_detect(User_path_to_file=User_path_to_file,
                                                             root_path=root_path,
                                                             errs_path=errs_path)
+    # Выводим результат выполнения данной функции
     print(script_file_path)
     print(script_file_path)
+    GUI.print_log("Путь к файлу сценария ", script_file_path)
     # scetch_name = "scetch"
-    if os.path.exists(script_file_path):
 
+    # Если файл сценария существует
+    if os.path.exists(script_file_path):
+        # Запускаем процесс обработки пользовательской прошивки
         sof_path = "#"
         sof_file_name = "#"
-        Arduino_port = Find_Arduino()
+        # Запускаем функцию взаимодействия с платой Ардуино, выводим порт подключения
+        Arduino_port = Find_Arduino(root_path=root_path)
         print(Arduino_port, '\n')
+        GUI.print_log("Порт подключения Ардуино ", Arduino_port)
         print(Arduino_port[0:3], '\n')
+
+        # Обрабатываем ошибку поиска порта подключения платы Ардуино
         if Arduino_port[0:3] != 'COM':
             errors_file.write("Проблема при передаче управляющих сигналов, свяжитесь с преподавателем\n")
 
-        # print(FPGA_flash(User_path=User_path_to_file))
-        if FPGA_flash(User_path=User_path_to_file) != 'OK':
+        # Запускаем функцию взаимодействия с платой ПЛИС
+        FPGA_chek, pr_type = FPGA_flash(User_path=User_path_to_file, FPGA_num=1, root_path=root_path)
+        # Производим обработку ошибок компиляции проекта или прошивки платы
+        if FPGA_chek != "OK":
+            returncode = 1
+            errors_ = 1
             errors_file.write("Проблема с компиляцией проекта, или прошивкой платы, изучите файлы логов\n")
 
-
-
-        for root, dirs, files in os.walk(User_path_to_file):
+        # Производим поиск файла прошивки после окончания прошивки платы ПЛИС или компиляции проекта
+        for root, dirs, files in os.walk(root_path + '/' + User_path_to_file):
             for file in files:
                 if file.endswith(".sof"):
-                    sof_path = os.path.join(root, file)
-                    print(sof_path)
-                    sof_path = root_path + "/" + sof_path
                     sof_file_name = file
-                    print(sof_path)
+                    sof_path = root + '/' + sof_file_name
 
+                    print(sof_path)
+                    GUI.print_log("Путь к файлу прошивки ", sof_path)
+
+        # Маркер существования видеофайла
         vid_chek = "video_none"
-        if os.path.exists(sof_path):
-            Video_chek = subprocess.Popen([sys.executable, 'Video.py'], stdout=subprocess.PIPE)
-            vid_chek = str(Video_chek.stdout)
-            serial = Arduino_Serial(script_file_path=script_file_path,
-                                    errs_path=errs_path,
-                                    Arduino_port=Arduino_port)
+
+        # Если файл прошивки существует, и работа с платой ПЛИС успешна, запускаем обработку прошивки пользователя
+        if os.path.exists(sof_path) and FPGA_chek == "OK":
+
+            # Открываем файл сценария
+            input_file = open(script_file_path)
+
+            # print(len(re.findall(r"[\n']+", open(script_file_path).read())))
+            # Построчно читаем файл сценария
+            lines = input_file.readlines()
+            # Найдем количество не пустых строк в файле сценария
+            strings = len(re.findall(r"[\n']+", open(script_file_path).read()))
+            print("ВСЕГО НЕ ПУСТЫХ СТРОК = ", strings)
+            sleep_timing = 0
+            for i in range(strings):
+                # Поиск указания временных задержек
+                if lines[i].count(delay[0]):
+                    # Поиск чисел в конкретной строке файла сценария
+                    sleep_num = re.findall(r'\d+', str(lines[i]))
+                    for item in sleep_num:
+                        sleep_dur = int(item)
+                    # Длительность единократной задержки не более 30 секунд
+                    if sleep_dur > 30:
+                        sleep_dur = 30
+                    print("Очередной слип на", sleep_dur)
+                    sleep_timing = sleep_timing + sleep_dur
+            strings = strings * 2
+            # Выводим суммарные тайминги
+            print("Время записи видео благодаря командам: ", strings)
+            GUI.print_log("Время записи видео благодаря командам: ", strings)
+            print("Суммарное время слипов: ", sleep_timing)
+            GUI.print_log("Суммарное время слипов: ", sleep_timing)
+            strings = strings + sleep_timing
+            # Длительностт видео не может быть больше 2 минут
+            if strings > 240:
+                strings = 240
+            # Выводим суммарное время записи видео
+            print("Суммарное время записи видео: ", strings)
+            GUI.print_log("Суммарное время записи видео: ", strings)
+
+            # Создаем файл временных параметров записи видео
+            video_file = open("video_timing.txt", "w")
+            # Записываем в данный файо необходимую длительность видео
+            video_file.write(str(strings * 2))
+            video_file.close()
+            input_file.close()
+            time.sleep(1)
+
+            # Запускаем функцию записи видео
+            video_script_path = root_path + '/' + "Video.py"
+            python_path = "C:/Users/grish/AppData/Local/Programs/Python/Python38/python.exe"
+            Video_chek = subprocess.Popen([python_path, video_script_path])
+
+            # Запускаем функцию последовательной передачи управляющих команд на плату Ардуино
+            serial, command_num = Arduino_Serial(script_file_path=script_file_path,
+                                                 errs_path=errs_path,
+                                                 Arduino_port=Arduino_port)
+
+            # Возвращаем флаг удачного завершения процесса передачи данных
             if serial == "OK":
                 print("Передача данных окончена")
-            # file_work = File_switch(User_path_to_file=User_path_to_file,
-            #                         root_path=root_path, sof_path=sof_path,
-            #                         scrip_file_path=script_file_path,
-            #                         sof_file_name=sof_file_name,
-            #                         script_file_name=script_file_name)
+                GUI.print_log("Передача данных окончена")
 
+            # Ожидаем окончания процесса записи видео
+            Video_chek.wait()
+            # Перепроверяем завершился ли процесс записи видео
+            while Video_chek.poll() is None:
+                time.sleep(0.5)
+            # Выводим код возврата процесса записи видео
+            print("Запись видео возвращает:", Video_chek.returncode)
+            GUI.print_log("Запись видео возвращает:", Video_chek.returncode)
+            returncode = Video_chek.returncode
+        # Если отсутствует файл прошивки или проект на ПЛИС, ошибка записывается в файл ошибок
         else:
             errors_file.write("Отсутствует файл прошивки или проект на ПЛИС\n")
+            errors_ = 1
+            # Задаем пустые значения переменных если файла прошивки нет
+            sof_file_name = ""
+            sof_path = ""
+    # Если отсутствует файл сценария, ошибка записывается в файл ошибок
     else:
         errors_file.write("Отправте данные повторно, включая файл сценария\n")
+        errors_ = 1
+        # Задаем соответствующие значения переменных, если отсутствует файл сценария
+        returncode = 1
+        script_file_path = ""
+        script_file_name = ""
+        sof_file_name = ""
+        sof_path = ""
+
+    # Закрываем файл ошибок
     errors_file.close()
 
-    file_work = File_switch(User_path_to_file=User_path_to_file, root_path=root_path,
-                            sof_path=sof_path, script_file_path=script_file_path,
-                            sof_file_name=sof_file_name,
-                            script_file_name=script_file_name,
-                            vid_chek=vid_chek)
+    # Повторно перепроверяем наличие файла прошивки
+    if not (os.path.exists(sof_path)):
+        sof_path = "#"
+        sof_name = "#"
 
-    #users_dir = os.path.join(root_path,User_path_to_file)
+    # Запускаем функцию копирования файлов отчетности
+    if not(User_path_to_file == ""):
+        file_work = File_switch(User_path_to_file=User_path_to_file, root_path=root_path,
+                                sof_path=sof_path, script_file_path=script_file_path,
+                                sof_file_name=sof_file_name,
+                                script_file_name=script_file_name,
+                                video_return=returncode)
 
-    #    os.remove(files)
-    #shutil.copy(r"C:\PROJECT_930\Prototype_new_2\result.zip", "" + User_path_to_file)
-    #for files in os.listdir(users_dir):
-        #if not files.endswith("output.mp4"):
-        #    errors_file.write("Отсутствует файл видеозаписи работы платы, перезалейте свои файлы\n")
+    # Запускаем функциб удаления лишних файлов
+    if User_path_to_file != '':
+        folder_send, chek_delete = Delete_files(root_path=root_path, User_path_to_file=User_path_to_file)
 
+        # new_path = root_path.replace('\\', '/', 2)
+        folder_delete = root_path + '/' + "Archived"
+        file_delete = File_deleting(folder=folder_delete)
+        print("Результат очистки архива = ", file_delete)
+        GUI.print_log("Результат очистки архива = ", file_delete)
+        pp = pprint.PrettyPrinter(indent=4)
 
+    # Указание адреса авторизации
+    SCOPES = ['https://www.googleapis.com/auth/drive']
 
+    # Проверяем наличие файла токена
+    token_name = 'ul_cad_1.json'
+    token_path = root_path + '/' + token_name
+    if not (os.path.exists(token_path)):
+        for root, dirs, files in os.walk('C:/'):
+            if files.find(token) != -1:
+                token_path = root + '/' + files
+    elif os.path.exists(token_path):
+        SERVICE_ACCOUNT_FILE = token_path
 
+        # Подключаемся к соответствующему сервису с помощью сервисного аккаунта Google
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        service = build('drive', 'v3', credentials=credentials, static_discovery=False)
 
+        # Запускаем функцию определения главной папки
+        main_folder_id = Get_main_folder_id(service=service)
+        print("Id главной папки = ", main_folder_id)
+        GUI.print_log("Id главной папки = ", main_folder_id)
+        if User_path_to_file == "":
+            mail_name = "error_folder"
+        else:
+            mail_name = User_path_to_file.split('/', 2)[1]
+        upload_file = True
+        # Запускаем процесс загрузки файлов до положительного исхода
+        while upload_file:
+            #try:
+            # Запускаем функцию создания папки пользователя
+            folder_id = Folder_create(service=service, Users_drive=mail_name, main_folder_id=main_folder_id)
+            print("Id текущей папки = ", folder_id)
+            # Выгружаем файлы из папки, содержащей итоговый архив
+            if User_path_to_file == "":
+                err_path = root_path + '/student_zip/error.txt'
+                err_dir = root_path + '/student_zip'
+                error = open(err_path, 'w')
+                error.write("Проблема с обработкой архива в письме.\n Отправьте архив в формате zip")
+                error.close()
+                error_dir = root_path + '/Archived/Error'
+                os.mkdir(error_dir)
+                os.chdir(error_dir)
+                shutil.make_archive('result', 'zip', err_dir)
+                time.sleep(1)
+                file_link = File_upload(service=service, folder_id=folder_id, file_path=err_path)
+                os.chdir(root_path)
+                shutil.rmtree(error_dir)
+                main_dir = root_path + '/student_zip'
+                for root, dirs, files in os.walk(main_dir):
+                    for direc in dirs:
+                        shutil.rmtree(root + '/' + direc)
+                    for file in files:
+                        os.remove(root + '/' + file)
+                upload_file = False
+            else:
+                for file in os.listdir(folder_send):
+                    if file.endswith("zip"):
+                        file_path = folder_send + "/" + file
+                # Получаем ссылку на скачивание данного архива
+                file_link = File_upload(service=service, folder_id=folder_id, file_path=file_path)
+                print("Ссылка на файл = ", file_link)
+                GUI.print_log("Ссылка на файл = ", file_link)
+                upload_file = False
+            delete_chek = Old_files_delete(main_folder_id, service)
+            print(delete_chek)
+            upload_file = False
+            # except:
+            #     print("Неудача при загрузке файлов на Google Drive")
+            #     GUI.print_log("Неудача при загрузке файлов на Google Drive")
+    else:
+        print("Отсутствует файл токена")
+        GUI.print_log("Отсутствует файл токена")
+    return ("OK", pr_type, command_num, file_link, errors_)
 
-
-    #     # archive.close()
-    # for files in User_path_to_file:
-
-    # for files in os.listdir(User_path_to_
-    #shutil.copy(users_dir + r"/result/result.zip", r"C:\PROJECT_930\Prototype_new_2\Archived")
-
-    # def empty(confirm, show_progress, sound):
-    #     flags = 0
-    #     if not confirm:
-    #         flags |= shellcon.SHERB_NOCONFIRMATION
-    #     if not show_progress:
-    #         flags |= shellcon.SHERB_NOPROGRESSUI
-    #     if not sound:
-    #         flags |= shellcon.SHERB_NOSOUND
-    #     shell.SHEmptyRecycleBin(None, None, flags)
-    # empty(confirm=False, show_progress=True, sound=False)
-    # print("Корзина очищена")
-    #config.close()
-
-    return("OK")
+# Launch(User_path_to_file="student_zip/grisha.petuxov", root_path="C:/Project_930/Prototype_with_mail_bot_TO_EXE")
