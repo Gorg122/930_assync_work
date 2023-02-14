@@ -45,7 +45,7 @@ email_name = "Not_email"
 stat_3 = 1
 stat_4 = 1
 stat_5 = 1
-GLOBAL_PC_ID = 3
+#GLOBAL_PC_ID = 2
 
 ############################# Функции для работы с яндекс диском #####################################################
 # URL = 'https://cloud-api.yandex.net/v1/disk/resources'
@@ -136,6 +136,7 @@ def file_download(my_id, email_name):
     with con:
         cur = con.cursor()
         # try:
+        #------------------------ЗАГРУЗКА АРХИВА С ФАЙЛАМИ ПОЛЬЗОВАТЕЛЯ ИЗ БАЗЫ ДАННЫХ НА УПРАВЛЯЮЩЕМ СТЕНДЕ---------------------------------------- 
         sql = ("""SELECT soc_zip
                   FROM status
                   WHERE id = %s""")
@@ -181,15 +182,17 @@ def file_downloader(service, value_id, email_name, root_path):
         # GUI.print_log("Download %d%%." % int(status.progress() * 100))
     path_firmware = 'student_zip/' + email_short_name + ''
     archive_path = root_path + '/student_zip/' + email_short_name + '/filename.zip'
-    save_response = file_zip_correct(archive_path)
-    GUI.print_log(save_response[1])
-    if save_response[0]:
-        return ''
+
+    # save_response = file_zip_correct(archive_path)
+    # GUI.print_log(save_response[1])
+    # if save_response[0]:
+    #     return ''
+    #if not(archive_path.endswith(".7z")):
     zip_file = zipfile.ZipFile(archive_path)  # Разархивирование файла
     zip_file.extractall(root_path + '/student_zip/' + email_short_name)
     return path_firmware
 
-
+#------------------------------------------------ФУНКЦИЯ ПОДКЛЮЧЕНИЯ К БАЗЕ ДАННЫХ НА УПРАВЛЯЮЩЕМ СТЕНДЕ--------------------------
 def connect():
     con = pymysql.connect(host='DESKTOP-CG9VKI4',
                           port=3306,
@@ -199,7 +202,7 @@ def connect():
                           cursorclass=pymysql.cursors.DictCursor)
     return con
 
-
+#---------------------------------------------------ФУНКЦИЯ ИЗМЕНЕНИЯ СТАТУСА КОМПЬЮТЕРА В БАЗЕ ДАННЫХ НА УПРАВЛЯЮЩЕМ СТЕНДЕ------------------
 def change_status(my_id, status_change):
     con = connect()
     with con:
@@ -212,9 +215,9 @@ def change_status(my_id, status_change):
         GUI.print_log("Текущий статус ", my_id)
         cur.execute(sql, (status_change, my_id))
         con.commit()
-    return ('OK', time.time())
+    return ('OK', format_time())
 
-
+#------------------------------------ФУНКЦИЯ ПРОВЕРКИ СТАТУСА ПЕРЕД НАЧАЛОМ ЗАГРУЗКИ ФАЙЛОВ
 def check_stat_for_downloading(my_id):
     con = connect()
     with con:
@@ -232,6 +235,7 @@ def check_stat_for_downloading(my_id):
             print(id_for_download)
             GUI.print_log("Id файла для загрузки ", id_for_download)
             global stat_3
+            #-----------------------ИЗМЕНЕНИЕ СТАТУСА НА "3" - ПРОШИВКА ПРИНЯТА В РАБОТУ(СТЕНД ЗАНЯТ)
             stat_3 = change_status(my_id, 3)[1]
             # change_status_log(4)
             return id_for_download, email_for_download
@@ -242,7 +246,7 @@ def check_stat_for_downloading(my_id):
             print('nothing')
             GUI.print_log("nothing")
 
-
+#--------------------------ФУНКЦИЯ ИЗМЕНЕНИЯ СТАТУСА НА "1" ПОСЛЕ ЗАВЕРШЕНИЯ ПРОЦЕССА ОБРАБОТКИ ФАЙЛОВ ПОЛЬЗОВАТЕЛЯ(СТЕНД СВОБОДЕН)------------
 def clear_all(my_id):
     con = connect()
     with con:
@@ -254,12 +258,27 @@ def clear_all(my_id):
         con.commit()
     return ('OK')
 
+def format_time():
+    t = datetime.datetime.now()
+    s = t.strftime('%Y-%m-%d %H:%M:%S.%f')
+    head = s[:-7] # everything up to the '.'
+    tail = s[-7:] # the '.' and the 6 digits after it
+    # f = float(tail)
+    # temp = "{:.03f}".format(f)  # for Python 2.x: temp = "%.3f" % f
+    # new_tail = temp[1:] # temp[0] is always '0'; get rid of it
+    return head, t# + new_tail
+
+
+#--------------------------------ФУНКЦИЯ ЗАПИСИ ВРЕМЕНИ НАЧАЛА ОБРАБОТКИ ПРОШИВКИ ПОЛЬЗОВАТЕЛЯ
 
 def write_current_time(id):  ##### Функция записи начала работы прошивки.
     con = connect()
     with con:
         cur = con.cursor()
-        dt_now = datetime.datetime.now()
+        #dt_now = datetime.datetime.now()
+        #dt_now = datetime.datetime.now().strftime('%y-%m-%d %a %H:%M:%S')[:-6]
+        dt_now = format_time()
+        #dt_now = dt_now[:-6]
         try:
             sql = ("""UPDATE status
                                            SET start_time = %s
@@ -292,7 +311,7 @@ def empty(confirm, show_progress, sound):
         print("Корзина пуста")
         GUI.print_log("Корзина пуста")
 
-
+#--------------------------------ФУНКЦИЯ ЗАПИСИ СТАТИСТИКИ ПО ОБРАБОТКЕ ФАЙЛОВ ПОЛЬЗОВАТЕЛЯ В БАЗУ ДАННЫХ
 def log_upload(stat_work_time, sts_3_time, sts_4_time, sts_5_time, fin_time, type_pr, comm_numm, file_size, email):
     con = connect()
     with con:
@@ -315,9 +334,10 @@ def log_upload(stat_work_time, sts_3_time, sts_4_time, sts_5_time, fin_time, typ
             GUI.print_log("Лог записан")
 
 
-def sub_main(service, root_path):
+def sub_main(service, root_path, GLOBAL_PC_ID):
     while True:
-        start_time = time.time()
+        start_time, ttime = format_time()
+        start_time_in_sec = time.time()
         # os.chdir(root_path)
         file_id, email = check_stat_for_downloading(GLOBAL_PC_ID)
         if (file_id != 0) and (email != 0):
@@ -329,6 +349,7 @@ def sub_main(service, root_path):
             else:
                 path_firmware = file_downloader(service, file_id, email, root_path)
                 file_delliter(file_id, service)
+            #------------------------ФУНКЦИЯ ИЗМЕНЕНИЯ СТАТУСА УДАЛЕННОГО СТЕНДА НА "4" (ЗАГРУЗКА ФАЙЛОВ ПРОШЛА УСПЕШНО, НАЧАЛО ОБРАБОТКИ)-----
             stat_4 = change_status(GLOBAL_PC_ID, 4)[1]
             write_current_time(GLOBAL_PC_ID)
 
@@ -341,12 +362,15 @@ def sub_main(service, root_path):
             GUI.print_log("LAUNCH_STAT = ", launch_stat)
             if launch_stat == "OK":
                 # new_users_dir = "C:\PROJECT_930\Prototype_new_2\Archived"
+                stat_5 = change_status(GLOBAL_PC_ID, 5)[1]
                 print(send_email(addr_to=email,  # "sasha.lorens@yandex.ru",
                                  msg_subj="Ваша прошивка",
                                  msg_text="Ваши файлы",
                                  files='',
                                  URL=URL,
                                  errors_ = errors_))
+
+                #------------------ИЗМЕНЕНИЕ СТЕНДА НА СТАТУС "5" (ОТПРАВКА ОТВЕТНОГО ПИСЬМА ПОЛЬЗОВАТЕЛЮ)-------------
                 stat_5 = change_status(GLOBAL_PC_ID, 5)[1]
                 if path_firmware == "":
                     main_dir = root_path + '/' + 'student_zip'
@@ -355,7 +379,7 @@ def sub_main(service, root_path):
             if path_firmware != '':
                 file_path = root_path + "/" + path_firmware
                 file_size = os.path.getsize(file_path)  ##!!!!!!!!!!!!!!
-                log_upload(start_time, stat_3, stat_4, stat_5, time.time(), pr_type, command_num,
+                log_upload(start_time, stat_3, stat_4, stat_5, format_time(), pr_type, command_num,
                            file_size, email)
             if main_dir != root_path or main_dir != root_path + '/':
                 for dirs in os.listdir(main_dir):
@@ -366,7 +390,13 @@ def sub_main(service, root_path):
                 #GUI.print_log("SDFKMSJKFZNKLJFSRHFSRZBLHJFSBRGFLBHGRHLG RSG SRHLJG RLHGJD BGHLJDLJHG")
             clear_all(GLOBAL_PC_ID)
             empty(confirm=False, show_progress=True, sound=True)
-        GUI.print_log("--- %s seconds ---" % (time.time() - start_time))
+        final_time = datetime.datetime.now()
+        dd = final_time - ttime
+        #print("DAYS DIFF", dd.days)  # get days
+        print("SECONDS DIFF", dd.seconds)  # get seconds
+        #print("MILESECIND DIFF", dd.microseconds)  # get microseconds
+        #print("MINUTES DIFF", int(round(dd.total_seconds() / 60, 0)))  # get minutes
+        GUI.print_log("--- %s seconds ---" % (time.time() - start_time_in_sec))
         while GUI.flag_stop:
             time.sleep(1)
         time.sleep(20)
@@ -387,7 +417,7 @@ def Find_files_by_ext(dir_path, file_ext):
                 return filepath
             else:
                 return 0
-
+#-----------------------------------------ГЛАВНАЯ ФУНКЦИЯ В КОТОРОЙ ЗАПУСКАЮТСЯ ВСЕ ДОЧЕРНИЕ ФУНКЦИИ
 def CAD_LOOP():
     service = main()
     GUI.print_log("Начало работы")
@@ -400,7 +430,19 @@ def CAD_LOOP():
     GUI.print_log(new_str_path)
     root_path = new_str_path
 
-
+    student_zip = root_path+"/student_zip"
+    print(student_zip)
+    for root, dirs, files in os.walk(student_zip):  # В цикле проходим все папки и файлы в корневой папке
+        for dir in dirs:
+            dirpath = root + '/' + dir  # Добавляем в путь папки и необходимый файл
+            shutil.rmtree(dirpath)
+    for dirs in os.walk(root_path):
+        if (dirs != "Archived") and (not(os.path.exists(root_path + "/Archived"))):
+            os.mkdir(root_path + "/Archived")
+        elif (dirs  != "Archive") and (not(os.path.exists(root_path + "/Archive"))):
+            os.mkdir(root_path + "/Archive")
+        elif (dirs != "video") and (not(os.path.exists(root_path + "/video"))):
+            os.mkdir(root_path + "/video")
     # quickstart_path = subprocess.run("WHERE /R C:\ quickstart.exe", stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     # print(quickstart_path.stdout, '\n')
     # # data = str(quickstart_path.stdout.decode().strip('\r\n'))
@@ -421,6 +463,7 @@ def CAD_LOOP():
     config_dir = root_path + '/' + "Config.ini"
     config.read(config_dir)
     config_path = config['Direc']['path']
+    GLOBAL_PC_ID = config['PC']['id']
     if config_path == root_path:
         print("Путь к папке проекта существует")
     else:
@@ -430,7 +473,7 @@ def CAD_LOOP():
         print("Путь до текущей директории был изменен")
 
     print("Root_path = ", root_path)
-    sub_main(service, root_path=root_path)
+    sub_main(service, root_path=root_path, GLOBAL_PC_ID=GLOBAL_PC_ID)
 
 
 if __name__ == '__main__':
